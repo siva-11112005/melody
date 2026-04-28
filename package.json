@@ -27,7 +27,7 @@
     }
   },
   "scripts": {
-    "dev": "bun run --hot src/server.ts",
+    "dev": "tsx watch src/server-node.ts",
     "start": "bun dist/server.js",
     "prebuild": "rm -rf dist",
     "build": "tsc && tsc-alias",
@@ -71,6 +71,7 @@
     "prettier": "^3.5.3",
     "simple-git-hooks": "^2.12.1",
     "tsc-alias": "^1.8.13",
+    "tsx": "^4.21.0",
     "typescript": "^5.8.2",
     "vitest": "^3.0.9",
     "wrangler": "^4.6.0"
