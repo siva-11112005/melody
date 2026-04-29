@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import OpenAI from 'openai';
 import axios from 'axios';
+import { jiosaavnSearch } from './music.routes';
 
 const router = Router();
 
@@ -8,6 +9,72 @@ const openai = new OpenAI({
   baseURL: 'https://openrouter.ai/api/v1',
   apiKey: process.env.OPENROUTER_API_KEY || 'dummy_key',
 });
+
+const hasOpenRouterKey = !!process.env.OPENROUTER_API_KEY && process.env.OPENROUTER_API_KEY !== 'dummy_key';
+
+const normalizeText = (value: string) => (
+  value
+    .toLowerCase()
+    .replace(/\(from\s+.*?\)/g, ' ')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+);
+
+const scoreMatch = (query: string, title: string, artist: string) => {
+  const q = normalizeText(query);
+  const t = normalizeText(title);
+  const a = normalizeText(artist);
+  if (!q || !t) return 0;
+
+  let score = 0;
+  if (t.includes(q)) score += 5;
+  if (q.includes(t)) score += 3;
+
+  const qTokens = q.split(' ').filter(Boolean);
+  qTokens.forEach((token) => {
+    if (token.length > 2 && t.includes(token)) score += 1;
+  });
+
+  if (a && q.includes(a)) score += 1;
+  return score;
+};
+
+const pickBestMatch = (query: string, results: any[]) => {
+  if (!Array.isArray(results) || results.length === 0) return null;
+
+  let best = results[0];
+  let bestScore = scoreMatch(query, best.name || best.title || '', best.artists?.primary?.[0]?.name || best.artist || '');
+
+  for (const item of results.slice(1)) {
+    const score = scoreMatch(query, item.name || item.title || '', item.artists?.primary?.[0]?.name || item.artist || '');
+    if (score > bestScore) {
+      best = item;
+      bestScore = score;
+    }
+  }
+
+  return best;
+};
+
+const mapToPlaylistTrack = (track: any, fallbackTitle?: string) => ({
+  id: track.id,
+  title: track.name || track.title || fallbackTitle || 'Unknown',
+  artist: track.artists?.primary?.[0]?.name || track.primaryArtists || track.artist || 'Unknown',
+  image: track.image?.[track.image.length - 1]?.url || track.image?.[0]?.url || '',
+  artwork: track.image?.[track.image.length - 1]?.url || track.image?.[0]?.url || '',
+  url: track.downloadUrl?.[track.downloadUrl.length - 1]?.url || track.downloadUrl?.[0]?.url || track.url || '',
+  duration: track.duration || 0,
+});
+
+async function searchSongsHelper(query: string, limit: number = 10) {
+  const JIOSAAVN_API_URL = process.env.JIOSAAVN_API_URL || 'http://localhost:3000';
+  try {
+    const res = await axios.get(`${JIOSAAVN_API_URL}/api/search/songs`, { params: { query, limit }, timeout: 3000 });
+    if (res.data?.data?.results?.length > 0) return res.data.data.results;
+  } catch (err) {}
+  return await jiosaavnSearch(query, limit);
+}
 
 // AI recommendations - no auth required for now
 router.post('/recommend', async (req, res) => {
@@ -26,8 +93,13 @@ Suggest 8 songs that fit this mood. Include a mix of Bollywood and English songs
 Return ONLY a valid JSON object with a "songs" key containing an array of objects, each with "title" and "artist" properties.
 Example: {"songs": [{"title": "Shape of You", "artist": "Ed Sheeran"}]}`;
 
+    if (!hasOpenRouterKey) {
+      const fallback = await searchSongsHelper(`${mood} songs`, 8);
+      return res.json(fallback || []);
+    }
+
     const completion = await openai.chat.completions.create({
-      model: 'google/gemini-2.5-flash-preview-05-20',
+      model: 'google/gemini-1.5-flash',
       messages: [
         { role: 'user', content: prompt }
       ],
@@ -46,27 +118,19 @@ Example: {"songs": [{"title": "Shape of You", "artist": "Ed Sheeran"}]}`;
       }
     } catch (e) {
       console.error('Failed to parse AI response:', aiResponse);
-      // Fallback: return trending songs instead
-      const JIOSAAVN_API_URL = process.env.JIOSAAVN_API_URL || 'http://localhost:3000';
-      const fallback = await axios.get(`${JIOSAAVN_API_URL}/api/search/songs`, {
-        params: { query: `${mood} songs`, limit: 8 }
-      });
-      return res.json(fallback.data?.data?.results || []);
+      const fallback = await searchSongsHelper(`${mood} songs`, 8);
+      return res.json(fallback || []);
     }
 
-    // Search each suggestion on JioSaavn
-    const JIOSAAVN_API_URL = process.env.JIOSAAVN_API_URL || 'http://localhost:3000';
+    // Search each suggestion
     const finalTracks: any[] = [];
 
     await Promise.all(suggestions.slice(0, 8).map(async (song: any) => {
       try {
         const query = `${song.title} ${song.artist}`;
-        const searchRes = await axios.get(`${JIOSAAVN_API_URL}/api/search/songs`, {
-          params: { query, limit: 1 }
-        });
-        
-        if (searchRes.data?.data?.results?.length > 0) {
-          finalTracks.push(searchRes.data.data.results[0]);
+        const results = await searchSongsHelper(query, 1);
+        if (results.length > 0) {
+          finalTracks.push(results[0]);
         }
       } catch (err: any) {
         console.error(`Failed to fetch song ${song.title}:`, err?.message);
@@ -76,13 +140,9 @@ Example: {"songs": [{"title": "Shape of You", "artist": "Ed Sheeran"}]}`;
     res.json(finalTracks);
   } catch (error: any) {
     console.error('AI Recommendation error:', error?.message);
-    // Fallback to mood-based search
     try {
-      const JIOSAAVN_API_URL = process.env.JIOSAAVN_API_URL || 'http://localhost:3000';
-      const fallback = await axios.get(`${JIOSAAVN_API_URL}/api/search/songs`, {
-        params: { query: `${req.body.mood || 'popular'} songs`, limit: 10 }
-      });
-      res.json(fallback.data?.data?.results || []);
+      const fallback = await searchSongsHelper(`${req.body.mood || 'popular'} songs`, 10);
+      res.json(fallback || []);
     } catch {
       res.status(500).json({ message: 'Error generating recommendations' });
     }
@@ -106,8 +166,14 @@ Return ONLY a valid JSON object with a "songs" key containing an array of object
 Focus on real Tamil songs that exist on streaming platforms.
 Example: {"songs": [{"title": "Nenjukkul Peidhidum", "artist": "Harris Jayaraj"}]}`;
 
+    if (!hasOpenRouterKey) {
+      const fallback = await searchSongsHelper(`${description} tamil songs`, 15);
+      const tracks = (fallback || []).slice(0, 15).map((t: any) => mapToPlaylistTrack(t, description));
+      return res.json({ tracks });
+    }
+
     const completion = await openai.chat.completions.create({
-      model: 'google/gemini-2.5-flash-preview-05-20',
+      model: 'google/gemini-1.5-flash',
       messages: [
         { role: 'user', content: prompt }
       ],
@@ -125,32 +191,27 @@ Example: {"songs": [{"title": "Nenjukkul Peidhidum", "artist": "Harris Jayaraj"}
       }
     } catch (e) {
       console.error('Failed to parse AI playlist response:', aiResponse);
-      return res.status(500).json({ message: 'AI could not generate playlist' });
+      const fallback = await searchSongsHelper(`${description} tamil songs`, 15);
+      const tracks = (fallback || []).slice(0, 15).map((t: any) => mapToPlaylistTrack(t, description));
+      return res.json({ tracks });
     }
 
-    // Search each suggestion on JioSaavn to get real track data
-    const JIOSAAVN_API_URL = process.env.JIOSAAVN_API_URL || 'http://localhost:3000';
+    if (suggestions.length === 0) {
+      const fallback = await searchSongsHelper(`${description} tamil songs`, 15);
+      const tracks = (fallback || []).slice(0, 15).map((t: any) => mapToPlaylistTrack(t, description));
+      return res.json({ tracks });
+    }
+
     const finalTracks: any[] = [];
 
     await Promise.all(suggestions.slice(0, 15).map(async (song: any) => {
       try {
         const query = `${song.title} ${song.artist || ''} tamil`;
-        const searchRes = await axios.get(`${JIOSAAVN_API_URL}/api/search/songs`, {
-          params: { query, limit: 1 },
-          timeout: 4000,
-        });
+        const results = await searchSongsHelper(query, 1);
 
-        if (searchRes.data?.data?.results?.length > 0) {
-          const track = searchRes.data.data.results[0];
-          finalTracks.push({
-            id: track.id,
-            title: track.name || song.title,
-            artist: track.artists?.primary?.[0]?.name || song.artist || 'Unknown',
-            image: track.image?.[track.image.length - 1]?.url || track.image?.[0]?.url || '',
-            artwork: track.image?.[track.image.length - 1]?.url || '',
-            url: track.downloadUrl?.[track.downloadUrl.length - 1]?.url || track.downloadUrl?.[0]?.url || '',
-            duration: track.duration || 0,
-          });
+        if (results.length > 0) {
+          const track = results[0];
+          finalTracks.push(mapToPlaylistTrack(track, song.title));
         }
       } catch (err: any) {
         console.error(`Failed to fetch: ${song.title}`, err?.message);
@@ -173,27 +234,16 @@ router.post('/resolve-songs', async (req, res) => {
       return res.status(400).json({ message: 'songNames array is required' });
     }
 
-    const JIOSAAVN_API_URL = process.env.JIOSAAVN_API_URL || 'http://localhost:3000';
     const tracks: any[] = [];
 
     await Promise.all(songNames.slice(0, 30).map(async (name: string) => {
       try {
-        const searchRes = await axios.get(`${JIOSAAVN_API_URL}/api/search/songs`, {
-          params: { query: name.trim(), limit: 1 },
-          timeout: 4000,
-        });
-
-        if (searchRes.data?.data?.results?.length > 0) {
-          const track = searchRes.data.data.results[0];
-          tracks.push({
-            id: track.id,
-            title: track.name || name,
-            artist: track.artists?.primary?.[0]?.name || 'Unknown',
-            image: track.image?.[track.image.length - 1]?.url || track.image?.[0]?.url || '',
-            artwork: track.image?.[track.image.length - 1]?.url || '',
-            url: track.downloadUrl?.[track.downloadUrl.length - 1]?.url || track.downloadUrl?.[0]?.url || '',
-            duration: track.duration || 0,
-          });
+        const trimmed = name.trim();
+        if (!trimmed) return;
+        const results = await searchSongsHelper(trimmed, 5);
+        if (results.length > 0) {
+          const best = pickBestMatch(trimmed, results) || results[0];
+          tracks.push(mapToPlaylistTrack(best, trimmed));
         }
       } catch (err: any) {
         console.error(`Failed to resolve: ${name}`, err?.message);

@@ -21,6 +21,11 @@ interface PlayerState {
   _seekRequested: number | null;
 }
 
+const normalizeDuration = (value: number | undefined) => {
+  if (!value || value <= 0) return 0;
+  return value < 1000 ? value * 1000 : value;
+};
+
 export const usePlayerStore = create<PlayerState>((set, get) => ({
   currentTrack: null,
   isPlaying: false,
@@ -41,9 +46,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     set({ 
       currentTrack: track, 
       isPlaying: true, 
-      audioUrl: track.url || track.downloadUrl?.[0]?.url, 
+      audioUrl: track.localUri || track.url || track.downloadUrl?.[0]?.url, 
       position: 0,
-      duration: 0,
+      duration: normalizeDuration(track?.duration),
       queue,
       currentIndex: index >= 0 ? index : 0,
       _seekRequested: null,
@@ -57,9 +62,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       set({ 
         currentTrack: nextTrack, 
         isPlaying: true, 
-        audioUrl: nextTrack.url || nextTrack.downloadUrl?.[0]?.url, 
+        audioUrl: nextTrack.localUri || nextTrack.url || nextTrack.downloadUrl?.[0]?.url, 
         position: 0,
-        duration: 0,
+        duration: normalizeDuration(nextTrack?.duration),
         currentIndex: currentIndex + 1,
         _seekRequested: null,
       });
@@ -73,9 +78,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       set({ 
         currentTrack: prevTrack, 
         isPlaying: true, 
-        audioUrl: prevTrack.url || prevTrack.downloadUrl?.[0]?.url, 
+        audioUrl: prevTrack.localUri || prevTrack.url || prevTrack.downloadUrl?.[0]?.url, 
         position: 0,
-        duration: 0,
+        duration: normalizeDuration(prevTrack?.duration),
         currentIndex: currentIndex - 1,
         _seekRequested: null,
       });

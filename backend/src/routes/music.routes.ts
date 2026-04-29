@@ -19,8 +19,50 @@ function decodeHTMLEntities(text: string) {
 // Direct JioSaavn API base URL (official endpoints)
 const JIOSAAVN_BASE = 'https://www.jiosaavn.com/api.php';
 
+function normalizeQuery(value: string) {
+  return value.toLowerCase().trim().replace(/\s+/g, ' ');
+}
+
+function buildSearchVariants(query: string) {
+  const cleaned = query.trim();
+  if (!cleaned) return [];
+  const lower = normalizeQuery(cleaned);
+  const variants = [cleaned];
+
+  if (lower.includes('medoly')) {
+    variants.push(cleaned.replace(/medoly/gi, 'melody'));
+  }
+
+  if (!/\bsongs?\b/.test(lower)) {
+    variants.push(`${cleaned} songs`);
+  }
+
+  if (!lower.includes('movie')) {
+    variants.push(`${cleaned} movie songs`);
+  }
+
+  if (!lower.includes('tamil')) {
+    variants.push(`${cleaned} tamil songs`);
+  }
+
+  const yearMatch = lower.match(/\b(19|20)\d{2}\b/);
+  if (yearMatch) {
+    const year = yearMatch[0];
+    variants.push(`${year} tamil songs`, `${year} hits songs`, `${year} movie songs`);
+  }
+
+  return [...new Set(variants.map(v => v.trim()).filter(Boolean))];
+}
+
+function getResultKey(item: any) {
+  if (item?.id) return String(item.id);
+  const title = (item?.name || item?.title || '').toLowerCase().trim();
+  const artist = (item?.artists?.primary?.[0]?.name || item?.primaryArtists || item?.artist || '').toLowerCase().trim();
+  return `${title}__${artist}`;
+}
+
 // Helper: call JioSaavn's actual API and parse response
-async function jiosaavnSearch(query: string, limit: number = 10, page: number = 1) {
+export async function jiosaavnSearch(query: string, limit: number = 10, page: number = 1) {
   try {
     const response = await axios.get(JIOSAAVN_BASE, {
       params: {
@@ -169,7 +211,8 @@ router.get('/search', async (req, res) => {
     }
 
     const pageNum = parseInt(page as string) || 1;
-    const cacheKey = `search_${query}_p${pageNum}`;
+    const queryText = String(query);
+    const cacheKey = `search_${queryText}_p${pageNum}`;
     if (cache.has(cacheKey)) {
       return res.json(cache.get(cacheKey));
     }
@@ -178,23 +221,44 @@ router.get('/search', async (req, res) => {
     let results: any[] = [];
     const JIOSAAVN_API_URL = process.env.JIOSAAVN_API_URL || 'http://localhost:3000';
 
-    try {
-      const response = await axios.get(`${JIOSAAVN_API_URL}/api/search/songs`, {
-        params: { query, limit: 30, page: pageNum },
-        timeout: 5000,
-      });
-      if (response.data?.data?.results?.length > 0) {
-        results = response.data.data.results;
+    const fetchResults = async (q: string) => {
+      let fetched: any[] = [];
+      try {
+        const response = await axios.get(`${JIOSAAVN_API_URL}/api/search/songs`, {
+          params: { query: q, limit: 30, page: pageNum },
+          timeout: 5000,
+        });
+        if (response.data?.data?.results?.length > 0) {
+          fetched = response.data.data.results;
+        }
+      } catch {
+        // Proxy not available, use direct JioSaavn API
       }
-    } catch {
-      // Proxy not available, use direct JioSaavn API
-      console.log('JioSaavn proxy unavailable, using direct API');
+
+      if (fetched.length === 0) {
+        fetched = await jiosaavnSearch(q, 30, pageNum);
+      }
+
+      return fetched;
+    };
+
+    const variants = pageNum === 1 ? buildSearchVariants(queryText) : [queryText];
+    const merged: any[] = [];
+    const seen = new Set<string>();
+
+    for (const q of variants) {
+      const fetched = await fetchResults(q);
+      fetched.forEach((item: any) => {
+        const key = getResultKey(item);
+        if (!seen.has(key)) {
+          seen.add(key);
+          merged.push(item);
+        }
+      });
+      if (merged.length >= 30) break;
     }
 
-    // Fallback to direct JioSaavn API
-    if (results.length === 0) {
-      results = await jiosaavnSearch(query as string, 30, pageNum);
-    }
+    results = merged.slice(0, 30);
 
     const data = { data: { results } };
     cache.set(cacheKey, data);

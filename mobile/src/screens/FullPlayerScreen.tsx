@@ -165,6 +165,7 @@ export default function FullPlayerScreen({ navigation }: any) {
   };
 
   const formatTime = (millis: number) => {
+    if (!Number.isFinite(millis) || millis < 0) return '0:00';
     const totalSeconds = Math.floor(millis / 1000);
     const m = Math.floor(totalSeconds / 60);
     const s = totalSeconds % 60;
@@ -177,6 +178,9 @@ export default function FullPlayerScreen({ navigation }: any) {
   const canGoPrevious = queue.length > 0 && currentIndex > 0;
   const displayTitle = cleanSongTitle(currentTrack.title);
   const displayArtist = cleanSongTitle(currentTrack.artist);
+  const rawDuration = typeof currentTrack.duration === 'string' ? parseInt(currentTrack.duration, 10) : currentTrack.duration;
+  const fallbackDuration = rawDuration ? (rawDuration < 1000 ? rawDuration * 1000 : rawDuration) : 0;
+  const safeDuration = duration || fallbackDuration || 0;
 
   return (
     <LinearGradient colors={['#2d1b4e', '#1a1a2e', '#121212']} style={styles.container}>
@@ -216,8 +220,8 @@ export default function FullPlayerScreen({ navigation }: any) {
           <Slider
             style={styles.slider}
             minimumValue={0}
-            maximumValue={duration || 1}
-            value={isSeeking ? seekValue : position}
+            maximumValue={safeDuration || 1}
+            value={isSeeking ? seekValue : Math.min(position, safeDuration || position)}
             onSlidingStart={handleSeekStart}
             onValueChange={(val) => { if (isSeeking) setSeekValue(val); }}
             onSlidingComplete={handleSeekComplete}
@@ -227,7 +231,7 @@ export default function FullPlayerScreen({ navigation }: any) {
           />
           <View style={styles.timeRow}>
             <Text style={styles.timeText}>{formatTime(isSeeking ? seekValue : position)}</Text>
-            <Text style={styles.timeText}>{formatTime(duration)}</Text>
+            <Text style={styles.timeText}>{formatTime(safeDuration)}</Text>
           </View>
         </View>
 
@@ -354,7 +358,7 @@ const styles = StyleSheet.create({
   },
   headerBtn: { width: 40, alignItems: 'center' },
   headerTitle: { color: '#ccc', fontSize: 14, fontWeight: '600', letterSpacing: 1 },
-  content: { alignItems: 'center', paddingHorizontal: 30 },
+  content: { alignItems: 'center', paddingHorizontal: 30, paddingBottom: 40 },
   artworkContainer: {
     width: width - 60, height: width - 60, borderRadius: 16,
     overflow: 'hidden', elevation: 20,

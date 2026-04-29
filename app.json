@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "88ef6ec8-0d98-48bd-8f7b-d3ea508c07de"
+      }
+    },
+    "android": {
+      "package": "com.siva1011.jiosaavnapi"
+    }
+  }
+}

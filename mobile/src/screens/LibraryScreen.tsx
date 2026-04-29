@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   View, Text, StyleSheet, TouchableOpacity, FlatList, 
-  Image, Alert, TextInput, Modal, ScrollView, ActivityIndicator
+  Image, Alert, TextInput, Modal, ScrollView, ActivityIndicator, Dimensions, BackHandler
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -9,7 +9,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { usePlayerStore } from '../store/usePlayerStore';
 import { useLibraryStore } from '../store/useLibraryStore';
-import { getDownloadedTracks } from '../services/downloadService';
+import { applyDownloadedUris, getDownloadedTracks } from '../services/downloadService';
 import { API_URL } from '../config/api';
 import { cleanSongTitle } from '../utils/textUtils';
 
@@ -34,6 +34,7 @@ export default function LibraryScreen() {
   const [targetPlaylistId, setTargetPlaylistId] = useState<string | null>(null);
   const { recentlyPlayed, loadLibrary } = useLibraryStore();
   const { playTrack } = usePlayerStore();
+  const createOptionWidth = (Dimensions.get('window').width - 60) / 4;
 
   useFocusEffect(
     useCallback(() => {
@@ -41,8 +42,28 @@ export default function LibraryScreen() {
       loadDownloads();
       loadLikedSongs();
       if (activeTab === 'playlists') loadPlaylists();
-    }, [])
+    }, [activeTab])
   );
+
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        if (showCreateModal) {
+          setShowCreateModal(false);
+          return true;
+        }
+        if (expandedPlaylist) {
+          setExpandedPlaylist(null);
+          return true;
+        }
+        return false;
+      };
+
+      const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+      return () => subscription.remove();
+    }, [showCreateModal, expandedPlaylist])
+  );
+
 
   const loadDownloads = async () => { setDownloads(await getDownloadedTracks()); };
   const loadLikedSongs = async () => {
@@ -151,7 +172,7 @@ export default function LibraryScreen() {
     }
     setGenerating(true);
     try {
-      const names = csvSongs.split(',').map(s => s.trim()).filter(Boolean);
+      const names = csvSongs.split(/[\n,]/).map(s => s.trim()).filter(Boolean);
       const resp = await axios.post(`${API_URL}/ai/resolve-songs`,
         { songNames: names }, { timeout: 30000 }
       );
@@ -205,14 +226,27 @@ export default function LibraryScreen() {
     } catch { Alert.alert('Error', 'Could not remove'); }
   };
 
-  const handlePlay = (track: any) => {
-    playTrack({
-      id: track.id,
-      url: track.url || track.localUri || null,
-      title: cleanSongTitle(track.title || track.name),
-      artist: cleanSongTitle(track.artist),
-      artwork: track.artwork || track.image || null,
-    });
+  const toPlayerTrack = (t: any) => {
+    const rawDuration = typeof t.duration === 'string' ? parseInt(t.duration, 10) : t.duration;
+    const durationMs = rawDuration ? (rawDuration < 1000 ? rawDuration * 1000 : rawDuration) : 0;
+    return {
+      id: t.id,
+      url: t.localUri || t.url || t.audioUrl || t.streamUrl || null,
+      title: cleanSongTitle(t.title || t.name || ''),
+      artist: cleanSongTitle(t.artist || t.primaryArtists || ''),
+      artwork: t.artwork || t.image || null,
+      duration: durationMs,
+      downloadUrl: t.downloadUrl,
+      localUri: t.localUri,
+    };
+  };
+
+  const handlePlay = async (track: any, contextTracks?: any[]) => {
+    const baseList = contextTracks && contextTracks.length > 0 ? contextTracks : [track];
+    const baseQueue = baseList.map(toPlayerTrack);
+    const queue = await applyDownloadedUris(baseQueue);
+    const mapped = queue.find(t => t.id === track.id) || toPlayerTrack(track);
+    playTrack(mapped, queue);
   };
 
   const TABS: { key: TabName; label: string; icon: string }[] = [
@@ -222,8 +256,8 @@ export default function LibraryScreen() {
     { key: 'liked', label: 'Liked', icon: 'heart' },
   ];
 
-  const renderTrackItem = (track: any, playlistId?: string) => (
-    <TouchableOpacity style={styles.trackItem} onPress={() => handlePlay(track)} activeOpacity={0.6} key={track.id}>
+  const renderTrackItem = (track: any, playlistId?: string, contextTracks?: any[]) => (
+    <TouchableOpacity style={styles.trackItem} onPress={() => { void handlePlay(track, contextTracks); }} activeOpacity={0.6} key={track.id}>
       <Image source={{ uri: track.artwork || track.image || 'https://placehold.co/50x50/282828/fff?text=♪' }} style={styles.trackImage} />
       <View style={styles.trackInfo}>
         <Text style={styles.trackTitle} numberOfLines={1}>{cleanSongTitle(track.title || track.name)}</Text>
@@ -249,25 +283,25 @@ export default function LibraryScreen() {
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 140 }}>
       {/* Create playlist buttons */}
       <View style={styles.createOptions}>
-        <TouchableOpacity style={styles.createOptionBtn} onPress={() => openCreateModal('manual')}>
+        <TouchableOpacity style={[styles.createOptionBtn, { width: createOptionWidth }]} onPress={() => openCreateModal('manual')}>
           <View style={[styles.createIcon, { backgroundColor: '#1DB954' }]}>
             <Ionicons name="add" size={24} color="#fff" />
           </View>
           <Text style={styles.createOptionText}>Empty Playlist</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.createOptionBtn} onPress={() => openCreateModal('search')}>
+        <TouchableOpacity style={[styles.createOptionBtn, { width: createOptionWidth }]} onPress={() => openCreateModal('search')}>
           <View style={[styles.createIcon, { backgroundColor: '#6c5ce7' }]}>
             <Ionicons name="search" size={22} color="#fff" />
           </View>
           <Text style={styles.createOptionText}>Search & Add</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.createOptionBtn} onPress={() => openCreateModal('csv')}>
+        <TouchableOpacity style={[styles.createOptionBtn, { width: createOptionWidth }]} onPress={() => openCreateModal('csv')}>
           <View style={[styles.createIcon, { backgroundColor: '#e17055' }]}>
             <Ionicons name="list" size={22} color="#fff" />
           </View>
           <Text style={styles.createOptionText}>Song Names</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.createOptionBtn} onPress={() => openCreateModal('ai')}>
+        <TouchableOpacity style={[styles.createOptionBtn, { width: createOptionWidth }]} onPress={() => openCreateModal('ai')}>
           <View style={[styles.createIcon, { backgroundColor: '#fd79a8' }]}>
             <Ionicons name="sparkles" size={22} color="#fff" />
           </View>
@@ -290,7 +324,7 @@ export default function LibraryScreen() {
             </TouchableOpacity>
             {expandedPlaylist === pl._id && (
               <View style={styles.playlistTracks}>
-                {pl.tracks?.length > 0 && pl.tracks.map((t: any) => renderTrackItem(t, pl._id))}
+                {pl.tracks?.length > 0 && pl.tracks.map((t: any) => renderTrackItem(t, pl._id, pl.tracks))}
                 {(!pl.tracks || pl.tracks.length === 0) && (
                   <Text style={styles.emptyPlaylistText}>No songs yet. Add some below!</Text>
                 )}
@@ -335,23 +369,23 @@ export default function LibraryScreen() {
         <FlatList data={recentlyPlayed} keyExtractor={(item, i) => item.id || String(i)}
           contentContainerStyle={{ paddingBottom: 140 }}
           ListEmptyComponent={renderEmpty('No recently played songs', 'time-outline')}
-          renderItem={({ item }) => renderTrackItem(item)} />
+          renderItem={({ item }) => renderTrackItem(item, undefined, recentlyPlayed)} />
       )}
       {activeTab === 'downloads' && (
         <FlatList data={downloads} keyExtractor={(item, i) => item.id || String(i)}
           contentContainerStyle={{ paddingBottom: 140 }}
           ListEmptyComponent={renderEmpty('No downloaded songs', 'download-outline')}
-          renderItem={({ item }) => renderTrackItem(item)} />
+          renderItem={({ item }) => renderTrackItem(item, undefined, downloads)} />
       )}
       {activeTab === 'liked' && (
         <FlatList data={likedSongs} keyExtractor={(item, i) => item.id || String(i)}
           contentContainerStyle={{ paddingBottom: 140 }}
           ListEmptyComponent={renderEmpty('No liked songs yet', 'heart-outline')}
-          renderItem={({ item }) => renderTrackItem(item)} />
+          renderItem={({ item }) => renderTrackItem(item, undefined, likedSongs)} />
       )}
 
       {/* Create Playlist Modal */}
-      <Modal visible={showCreateModal} transparent animationType="slide">
+      <Modal visible={showCreateModal} transparent animationType="slide" onRequestClose={() => setShowCreateModal(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>

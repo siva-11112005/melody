@@ -10,6 +10,7 @@ import { usePlayerStore } from '../store/usePlayerStore';
 import { useLibraryStore } from '../store/useLibraryStore';
 import { API_URL } from '../config/api';
 import { cleanSongTitle, decodeHTMLEntities } from '../utils/textUtils';
+import { applyDownloadedUris } from '../services/downloadService';
 
 const DEFAULT_QUICK_SEARCHES = ['Arijit Singh', 'Dua Lipa', 'AP Dhillon', 'KK', 'Taylor Swift', 'Anirudh'];
 
@@ -92,30 +93,37 @@ export default function SearchScreen() {
     }
   };
 
-  const mapTrack = (t: any) => {
+  const toPlayerTrack = (t: any) => {
     const imgArr = t.image;
     // Get the highest quality image available for each song
     const artwork = imgArr
       ? (imgArr[imgArr.length - 1]?.url || imgArr[1]?.url || imgArr[0]?.url || null)
-      : (t.artwork || null);
+      : null;
 
     const dlArr = t.downloadUrl;
-    const audioUrl = dlArr
+    const audioUrl = t.localUri || t.url || t.audioUrl || (dlArr
       ? (dlArr[dlArr.length - 1]?.url || dlArr[0]?.url || null)
-      : (t.url || null);
+      : null);
+
+    const rawDuration = typeof t.duration === 'string' ? parseInt(t.duration, 10) : t.duration;
+    const durationMs = rawDuration ? (rawDuration < 1000 ? rawDuration * 1000 : rawDuration) : 0;
 
     return {
       id: t.id,
       url: audioUrl,
-      title: cleanSongTitle(t.name || t.title),
-      artist: cleanSongTitle(t.artists?.primary?.[0]?.name || t.primaryArtists || t.artist),
-      artwork: artwork,
+      title: cleanSongTitle(t.title || t.name || ''),
+      artist: cleanSongTitle(t.artist || t.artists?.primary?.[0]?.name || t.primaryArtists || ''),
+      artwork: t.artwork || artwork,
+      duration: durationMs,
+      downloadUrl: t.downloadUrl,
+      localUri: t.localUri,
     };
   };
 
-  const handlePlay = (track: any) => {
-    const queue = results.map(mapTrack);
-    const mapped = mapTrack(track);
+  const handlePlay = async (track: any) => {
+    const baseQueue = results.map(toPlayerTrack);
+    const queue = await applyDownloadedUris(baseQueue);
+    const mapped = queue.find(t => t.id === track.id) || toPlayerTrack(track);
     playTrack(mapped, queue);
     addRecentlyPlayed(mapped);
   };
@@ -279,7 +287,7 @@ export default function SearchScreen() {
             </View>
           }
           renderItem={({ item }) => (
-            <TouchableOpacity style={styles.trackItem} onPress={() => handlePlay(item)} activeOpacity={0.6}>
+            <TouchableOpacity style={styles.trackItem} onPress={() => { void handlePlay(item); }} activeOpacity={0.6}>
               <Image 
                 source={{ uri: getTrackImage(item) || 'https://placehold.co/50x50/282828/fff?text=♪' }} 
                 style={styles.trackImage} 

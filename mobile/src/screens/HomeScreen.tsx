@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { 
-  View, Text, StyleSheet, TouchableOpacity, 
-  ActivityIndicator, Image, ScrollView, Dimensions, NativeSyntheticEvent, NativeScrollEvent
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  View, Text, StyleSheet, TouchableOpacity,
+  ActivityIndicator, Image, ScrollView, FlatList, LayoutChangeEvent
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import axios from 'axios';
@@ -10,8 +10,16 @@ import { usePlayerStore } from '../store/usePlayerStore';
 import { useAuthStore } from '../store/useAuthStore';
 import { API_URL } from '../config/api';
 import { cleanSongTitle } from '../utils/textUtils';
+import { applyDownloadedUris } from '../services/downloadService';
 
-const { width } = Dimensions.get('window');
+const shuffleArray = (array: any[]) => {
+  const newArr = [...array];
+  for (let i = newArr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [newArr[i], newArr[j]] = [newArr[j], newArr[i]];
+  }
+  return newArr;
+};
 
 // Each section has primary + fallback queries to ensure we always get enough songs
 const SECTIONS = [
@@ -47,18 +55,42 @@ interface SectionState {
   queryIndex: number;
 }
 
+const INITIAL_LOAD_SIZE = 10;
+const PAGE_SIZE = 5;
+
 export default function HomeScreen({ navigation }: any) {
   const [sections, setSections] = useState<Record<string, SectionState>>({});
   const [initialLoading, setInitialLoading] = useState<Record<string, boolean>>({});
   const globalSeenRef = useRef<Set<string>>(new Set());
-  const { recentlyPlayed, addRecentlyPlayed } = useLibraryStore();
+  const listLayoutRef = useRef<Record<string, { layoutWidth: number; contentWidth: number }>>({});
+  const [dynamicSections, setDynamicSections] = useState<typeof SECTIONS>([]);
+  const { recentlyPlayed, addRecentlyPlayed, loadLibrary } = useLibraryStore();
   const { playTrack } = usePlayerStore();
   const { logout } = useAuthStore();
 
   useEffect(() => {
+    loadLibrary();
     globalSeenRef.current = new Set();
     fetchAllSections();
   }, []);
+
+  useEffect(() => {
+    if (recentlyPlayed.length > 0 && dynamicSections.length === 0) {
+      const recentArtists = [...new Set(recentlyPlayed.map(t => cleanSongTitle(t.artist || '')))].filter(a => a && a.length > 2);
+      if (recentArtists.length > 0) {
+        // Pick random artists from recent to create variety
+        const shuffledArtists = shuffleArray(recentArtists);
+        const topArtists = shuffledArtists.slice(0, 2);
+        const dynamicBasedOnRecent = topArtists.map(artist => ({
+          id: `recent_${artist.replace(/[^a-zA-Z0-9]/g, '')}`,
+          title: `🎧 Because you listened to ${artist}`,
+          queries: [`${artist} tamil songs`, `best of ${artist} tamil`, `${artist} hits`]
+        }));
+        setDynamicSections(dynamicBasedOnRecent);
+        dynamicBasedOnRecent.forEach(sec => fetchSectionInitial(sec));
+      }
+    }
+  }, [recentlyPlayed]);
 
   const fetchAllSections = async () => {
     // Fetch in batches of 3
@@ -101,15 +133,17 @@ export default function HomeScreen({ navigation }: any) {
     const localSeen = new Set<string>();
     let queryIndex = 0;
 
-    // Try each query until we have >= 10 songs
-    for (let qi = 0; qi < section.queries.length && allTracks.length < 10; qi++) {
+    // Try each query until we have enough for the first page
+    for (let qi = 0; qi < section.queries.length && allTracks.length < INITIAL_LOAD_SIZE; qi++) {
       try {
+        const randomPage = Math.floor(Math.random() * 4) + 1; // 1 to 4 for shuffling
         const response = await axios.get(`${API_URL}/music/search`, {
-          params: { query: section.queries[qi] },
+          params: { query: section.queries[qi], page: randomPage },
           timeout: 12000,
         });
         if (response.data?.data?.results) {
-          const newTracks = deduplicateTracks(response.data.data.results, localSeen);
+          let newTracks = deduplicateTracks(response.data.data.results, localSeen);
+          newTracks = shuffleArray(newTracks);
           allTracks = [...allTracks, ...newTracks];
           queryIndex = qi;
         }
@@ -121,10 +155,10 @@ export default function HomeScreen({ navigation }: any) {
     setSections(prev => ({
       ...prev,
       [section.id]: {
-        tracks: allTracks.slice(0, 15),
+        tracks: allTracks.slice(0, INITIAL_LOAD_SIZE),
         page: 1,
         loadingMore: false,
-        hasMore: true,
+        hasMore: allTracks.length > 0,
         queryIndex: queryIndex,
       }
     }));
@@ -144,58 +178,64 @@ export default function HomeScreen({ navigation }: any) {
     }));
 
     try {
-      const nextPage = state.page + 1;
-      const query = sectionDef.queries[state.queryIndex] || sectionDef.queries[0];
-      
-      const response = await axios.get(`${API_URL}/music/search`, {
-        params: { query, page: nextPage },
-        timeout: 12000,
+      const localSeen = new Set<string>();
+      state.tracks.forEach(t => {
+        if (t?.id) localSeen.add(t.id);
+        const key = getSongKey(t);
+        if (key) localSeen.add(key);
       });
 
-      if (response.data?.data?.results?.length > 0) {
-        const localSeen = new Set<string>(state.tracks.map(t => t.id));
-        const newTracks = deduplicateTracks(response.data.data.results, localSeen);
-        
-        if (newTracks.length === 0) {
-          // Try next query variant instead
-          const nextQi = (state.queryIndex + 1) % sectionDef.queries.length;
-          const altResp = await axios.get(`${API_URL}/music/search`, {
-            params: { query: sectionDef.queries[nextQi] },
-            timeout: 12000,
-          });
-          if (altResp.data?.data?.results) {
-            const altTracks = deduplicateTracks(altResp.data.data.results, localSeen);
-            setSections(prev => ({
-              ...prev,
-              [sectionId]: {
-                ...prev[sectionId],
-                tracks: [...prev[sectionId].tracks, ...altTracks.slice(0, 10)],
-                page: nextPage,
-                loadingMore: false,
-                hasMore: altTracks.length > 0,
-                queryIndex: nextQi,
-              }
-            }));
-            return;
+      const maxAttempts = sectionDef.queries.length;
+      let attempt = 0;
+      let nextQueryIndex = state.queryIndex;
+      let appended: any[] = [];
+      let usedQueryIndex = state.queryIndex;
+      let usedPage = state.page;
+
+      while (attempt < maxAttempts && appended.length === 0) {
+        const query = sectionDef.queries[nextQueryIndex] || sectionDef.queries[0];
+        const pageToUse = attempt === 0 ? state.page + 1 : 1;
+
+        const response = await axios.get(`${API_URL}/music/search`, {
+          params: { query, page: pageToUse },
+          timeout: 12000,
+        });
+
+        const results = response.data?.data?.results || [];
+        if (results.length > 0) {
+          let newTracks = deduplicateTracks(results, localSeen);
+          newTracks = shuffleArray(newTracks);
+          appended = newTracks.slice(0, PAGE_SIZE);
+          if (appended.length > 0) {
+            usedQueryIndex = nextQueryIndex;
+            usedPage = pageToUse;
+            break;
           }
         }
 
-        setSections(prev => ({
-          ...prev,
-          [sectionId]: {
-            ...prev[sectionId],
-            tracks: [...prev[sectionId].tracks, ...newTracks.slice(0, 10)],
-            page: nextPage,
-            loadingMore: false,
-            hasMore: newTracks.length > 0,
-          }
-        }));
-      } else {
+        attempt += 1;
+        nextQueryIndex = (state.queryIndex + attempt) % sectionDef.queries.length;
+      }
+
+      if (appended.length === 0) {
         setSections(prev => ({
           ...prev,
           [sectionId]: { ...prev[sectionId], loadingMore: false, hasMore: false }
         }));
+        return;
       }
+
+      setSections(prev => ({
+        ...prev,
+        [sectionId]: {
+          ...prev[sectionId],
+          tracks: [...prev[sectionId].tracks, ...appended],
+          page: usedPage,
+          loadingMore: false,
+          hasMore: true,
+          queryIndex: usedQueryIndex,
+        }
+      }));
     } catch (error: any) {
       console.error(`Load more ${sectionId} error:`, error?.message);
       setSections(prev => ({
@@ -205,38 +245,65 @@ export default function HomeScreen({ navigation }: any) {
     }
   };
 
-  const handleScroll = (sectionId: string, event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const { contentOffset, layoutMeasurement, contentSize } = event.nativeEvent;
-    const distanceFromEnd = contentSize.width - layoutMeasurement.width - contentOffset.x;
-    // When user is within 200px of the end, load more
-    if (distanceFromEnd < 200) {
+  const maybeAutoLoad = (sectionId: string) => {
+    const state = sections[sectionId];
+    const layout = listLayoutRef.current[sectionId];
+    if (!state || !layout || state.loadingMore || !state.hasMore) return;
+
+    if (layout.contentWidth > 0 && layout.layoutWidth > 0 && layout.contentWidth <= layout.layoutWidth + 20) {
       loadMoreForSection(sectionId);
     }
   };
 
-  const mapTrack = (t: any) => {
+  const handleListLayout = (sectionId: string, event: LayoutChangeEvent) => {
+    const layoutWidth = event.nativeEvent.layout.width;
+    const prev = listLayoutRef.current[sectionId];
+    listLayoutRef.current[sectionId] = {
+      layoutWidth,
+      contentWidth: prev?.contentWidth || 0,
+    };
+    maybeAutoLoad(sectionId);
+  };
+
+  const handleListContentSizeChange = (sectionId: string, contentWidth: number) => {
+    const prev = listLayoutRef.current[sectionId];
+    listLayoutRef.current[sectionId] = {
+      layoutWidth: prev?.layoutWidth || 0,
+      contentWidth,
+    };
+    maybeAutoLoad(sectionId);
+  };
+
+  const toPlayerTrack = (t: any) => {
     const imgArr = t.image;
     const artwork = imgArr
       ? (imgArr[imgArr.length - 1]?.url || imgArr[1]?.url || imgArr[0]?.url || null)
-      : (t.artwork || null);
+      : null;
 
     const dlArr = t.downloadUrl;
-    const audioUrl = dlArr
+    const audioUrl = t.localUri || t.url || t.audioUrl || (dlArr
       ? (dlArr[dlArr.length - 1]?.url || dlArr[0]?.url || null)
-      : (t.url || null);
+      : null);
+
+    const rawDuration = typeof t.duration === 'string' ? parseInt(t.duration, 10) : t.duration;
+    const durationMs = rawDuration ? (rawDuration < 1000 ? rawDuration * 1000 : rawDuration) : 0;
 
     return {
       id: t.id,
       url: audioUrl,
-      title: cleanSongTitle(t.name || t.title),
-      artist: cleanSongTitle(t.artists?.primary?.[0]?.name || t.primaryArtists || t.artist),
-      artwork: artwork,
+      title: cleanSongTitle(t.title || t.name || ''),
+      artist: cleanSongTitle(t.artist || t.artists?.primary?.[0]?.name || t.primaryArtists || ''),
+      artwork: t.artwork || artwork,
+      duration: durationMs,
+      downloadUrl: t.downloadUrl,
+      localUri: t.localUri,
     };
   };
 
-  const handlePlay = (track: any, contextTracks: any[]) => {
-    const queue = contextTracks.map(mapTrack);
-    const mapped = mapTrack(track);
+  const handlePlay = async (track: any, contextTracks: any[]) => {
+    const baseQueue = contextTracks.map(toPlayerTrack);
+    const queue = await applyDownloadedUris(baseQueue);
+    const mapped = queue.find(t => t.id === track.id) || toPlayerTrack(track);
     playTrack(mapped, queue);
     addRecentlyPlayed(mapped);
   };
@@ -249,18 +316,16 @@ export default function HomeScreen({ navigation }: any) {
   };
 
   const renderHorizontalTracks = (sectionId: string, tracks: any[], loadingMore: boolean) => (
-    <ScrollView 
-      horizontal 
-      showsHorizontalScrollIndicator={false} 
+    <FlatList
+      data={tracks}
+      horizontal
+      showsHorizontalScrollIndicator={false}
       contentContainerStyle={{ paddingRight: 20 }}
-      onScroll={(e) => handleScroll(sectionId, e)}
-      scrollEventThrottle={200}
-    >
-      {tracks.map((item, index) => (
+      keyExtractor={(item, index) => `${item.id}-${index}`}
+      renderItem={({ item }) => (
         <TouchableOpacity
-          key={`${item.id}-${index}`}
           style={styles.trackCard}
-          onPress={() => handlePlay(item, tracks)}
+          onPress={() => { void handlePlay(item, tracks); }}
           activeOpacity={0.7}
         >
           <Image
@@ -274,14 +339,24 @@ export default function HomeScreen({ navigation }: any) {
             {cleanSongTitle(item.artists?.primary?.[0]?.name || item.artist)}
           </Text>
         </TouchableOpacity>
-      ))}
-      {loadingMore && (
-        <View style={styles.loadMoreIndicator}>
-          <ActivityIndicator size="small" color="#1DB954" />
-          <Text style={styles.loadMoreText}>Loading...</Text>
-        </View>
       )}
-    </ScrollView>
+      onEndReached={() => loadMoreForSection(sectionId)}
+      onEndReachedThreshold={0.7}
+      onLayout={(event) => handleListLayout(sectionId, event)}
+      onContentSizeChange={(contentWidth, _contentHeight) => handleListContentSizeChange(sectionId, contentWidth)}
+      initialNumToRender={PAGE_SIZE}
+      maxToRenderPerBatch={PAGE_SIZE}
+      windowSize={5}
+      removeClippedSubviews
+      ListFooterComponent={
+        loadingMore ? (
+          <View style={styles.loadMoreIndicator}>
+            <ActivityIndicator size="small" color="#1DB954" />
+            <Text style={styles.loadMoreText}>Loading...</Text>
+          </View>
+        ) : null
+      }
+    />
   );
 
   const renderSection = (section: typeof SECTIONS[0]) => {
@@ -315,8 +390,8 @@ export default function HomeScreen({ navigation }: any) {
         </View>
       </View>
 
-      {/* All Tamil Sections */}
-      {SECTIONS.map(section => renderSection(section))}
+      {/* All Tamil Sections including Dynamic */}
+      {[...dynamicSections, ...SECTIONS].map(section => renderSection(section))}
 
       {/* Recently Played */}
       {recentlyPlayed.length > 0 && (
@@ -327,7 +402,7 @@ export default function HomeScreen({ navigation }: any) {
               <TouchableOpacity
                 key={`recent-${item.id}-${index}`}
                 style={styles.trackCard}
-                onPress={() => handlePlay(item, recentlyPlayed)}
+                onPress={() => { void handlePlay(item, recentlyPlayed); }}
                 activeOpacity={0.7}
               >
                 <Image

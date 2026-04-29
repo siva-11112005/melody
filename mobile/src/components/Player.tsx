@@ -74,12 +74,29 @@ export default function Player({ onPress }: PlayerProps) {
           { shouldPlay: true, progressUpdateIntervalMillis: 500 },
           (status: any) => {
             if (!mountedRef.current) return;
+            if (currentUrlRef.current !== audioUrl) return;
             if (status.isLoaded) {
-              setPosition(status.positionMillis || 0);
-              if (status.durationMillis) setDuration(status.durationMillis);
+              const durationMillis = status.durationMillis || 0;
+              const positionMillis = status.positionMillis || 0;
+
               if (status.didJustFinish) {
-                playNext();
+                const store = usePlayerStore.getState();
+                const hasNext = store.queue.length > 0 && store.currentIndex < store.queue.length - 1;
+                if (hasNext) {
+                  store.playNext();
+                  return;
+                }
+                store.setIsPlaying(false);
+                setDuration(durationMillis || store.duration || 0);
+                setPosition(durationMillis || positionMillis);
+                return;
               }
+
+              const clampedPosition = durationMillis > 0
+                ? Math.min(positionMillis, durationMillis)
+                : positionMillis;
+              setPosition(clampedPosition);
+              if (durationMillis) setDuration(durationMillis);
             }
           }
         );

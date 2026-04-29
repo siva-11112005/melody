@@ -4,9 +4,14 @@ import Constants from 'expo-constants';
 // ============================================
 // SET YOUR RENDER BACKEND URL HERE
 // ============================================
-const PRODUCTION_API_URL = 'https://YOUR-RENDER-APP.onrender.com/api';
+const PRODUCTION_API_URL = 'https://melody-beqg.onrender.com/api';
 
 function getApiUrl(): string {
+  // Always use the Render URL, even in local development.
+  // Tip: Comment this return statement out if you want to test the backend locally again!
+  return PRODUCTION_API_URL;
+
+  /*
   // In production builds (APK), use the Render URL
   if (!__DEV__) {
     return PRODUCTION_API_URL;
@@ -30,6 +35,7 @@ function getApiUrl(): string {
   }
 
   return 'http://localhost:5000/api';
+  */
 }
 
 export const API_URL = getApiUrl();

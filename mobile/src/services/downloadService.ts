@@ -2,18 +2,51 @@ import * as FileSystem from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Alert } from 'react-native';
 
+const getBestAudioUrl = (track: any): string | null => {
+  if (!track) return null;
+  if (track.localUri) return track.localUri;
+  if (track.url) return track.url;
+  if (track.audioUrl) return track.audioUrl;
+  if (track.streamUrl) return track.streamUrl;
+  if (Array.isArray(track.downloadUrl) && track.downloadUrl.length > 0) {
+    const last = track.downloadUrl[track.downloadUrl.length - 1];
+    if (typeof last === 'string') return last;
+    if (last?.url) return last.url;
+  }
+  if (typeof track.downloadUrl === 'string') return track.downloadUrl;
+  return null;
+};
+
 export const downloadTrack = async (track: any) => {
   try {
     // Get the best available URL
-    const audioUrl = track.url || track.audioUrl || null;
+    let audioUrl = getBestAudioUrl(track);
     
     if (!audioUrl) {
       throw new Error('No stream URL available for this track');
     }
+
+    if (audioUrl.startsWith('file://')) {
+      return audioUrl;
+    }
+
+    if (audioUrl.startsWith('http://')) {
+      audioUrl = audioUrl.replace('http://', 'https://');
+    }
+
+    const existingStr = await AsyncStorage.getItem('downloads');
+    const existing = existingStr ? JSON.parse(existingStr) : [];
+    const existingTrack = existing.find((t: any) => t.id === track.id && t.localUri);
+    if (existingTrack?.localUri) {
+      const info = await FileSystem.getInfoAsync(existingTrack.localUri);
+      if (info.exists) {
+        return existingTrack.localUri;
+      }
+    }
     
     // Create a safe filename
     const safeTitle = (track.title || 'unknown').replace(/[^a-zA-Z0-9]/g, '_').substring(0, 50);
-    const fileUri = `${FileSystem.documentDirectory}${track.id}_${safeTitle}.m4a`;
+    const fileUri = `${FileSystem.documentDirectory}${track.id || Date.now()}_${safeTitle}.m4a`;
     
     // Check if already downloaded
     const fileInfo = await FileSystem.getInfoAsync(fileUri);
@@ -28,6 +61,7 @@ export const downloadTrack = async (track: any) => {
       {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'Referer': 'https://www.jiosaavn.com',
         },
       },
       (downloadProgress) => {
@@ -40,9 +74,6 @@ export const downloadTrack = async (track: any) => {
     
     if (result && result.uri) {
       // Save metadata to local storage for the library
-      const existingStr = await AsyncStorage.getItem('downloads');
-      const existing = existingStr ? JSON.parse(existingStr) : [];
-      
       // Avoid duplicate entries
       const filtered = existing.filter((t: any) => t.id !== track.id);
       const updated = [...filtered, { 
@@ -68,6 +99,30 @@ export const getDownloadedTracks = async () => {
   } catch (error) {
     console.error('Error fetching downloads:', error);
     return [];
+  }
+};
+
+export const applyDownloadedUris = async (tracks: any[]) => {
+  try {
+    if (!Array.isArray(tracks) || tracks.length === 0) return tracks;
+    const downloaded = await getDownloadedTracks();
+    if (!Array.isArray(downloaded) || downloaded.length === 0) return tracks;
+
+    const localMap = new Map<string, string>();
+    downloaded.forEach((t: any) => {
+      if (t?.id && t?.localUri) localMap.set(t.id, t.localUri);
+    });
+
+    if (localMap.size === 0) return tracks;
+
+    return tracks.map((t: any) => {
+      const localUri = t?.id ? localMap.get(t.id) : null;
+      if (!localUri) return t;
+      return { ...t, localUri, url: localUri };
+    });
+  } catch (error) {
+    console.error('Error applying downloads:', error);
+    return tracks;
   }
 };
 

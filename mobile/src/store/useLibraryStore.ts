@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import axios from 'axios';
+import { API_URL } from '../config/api';
 
 interface LibraryState {
   recentSearches: string[];
@@ -25,6 +27,17 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     const updated = [track, ...recentlyPlayed.filter(t => t.id !== track.id)].slice(0, 20);
     await AsyncStorage.setItem('recentlyPlayed', JSON.stringify(updated));
     set({ recentlyPlayed: updated });
+
+    try {
+      const token = await AsyncStorage.getItem('token');
+      if (token) {
+        await axios.post(`${API_URL}/auth/recent`, { track }, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      }
+    } catch (e) {
+      console.log('Failed to sync recent played to backend');
+    }
   },
   
   loadLibrary: async () => {
@@ -35,5 +48,20 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       recentSearches: searches ? JSON.parse(searches) : [],
       recentlyPlayed: played ? JSON.parse(played) : [],
     });
+
+    try {
+      const token = await AsyncStorage.getItem('token');
+      if (token) {
+        const resp = await axios.get(`${API_URL}/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (resp.data && resp.data.recentlyPlayed) {
+          set({ recentlyPlayed: resp.data.recentlyPlayed });
+          await AsyncStorage.setItem('recentlyPlayed', JSON.stringify(resp.data.recentlyPlayed));
+        }
+      }
+    } catch (e) {
+      console.log('Failed to fetch recent played from backend');
+    }
   }
 }));

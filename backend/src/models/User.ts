@@ -11,6 +11,10 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  recentlyPlayed: {
+    type: [Object],
+    default: [],
+  },
   createdAt: {
     type: Date,
     default: Date.now,

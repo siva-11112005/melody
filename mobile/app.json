@@ -22,13 +22,23 @@
         "backgroundColor": "#121212"
       },
       "package": "com.tamilmusic.app",
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-audio"
-    ]
+      "expo-audio",
+      "expo-font"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "b9fb7dec-7639-4ead-8a88-2e8c04eb4bf1"
+      }
+    }
   }
 }
