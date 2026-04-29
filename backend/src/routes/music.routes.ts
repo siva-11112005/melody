@@ -205,14 +205,15 @@ router.get('/suggest', async (req, res) => {
 // Search songs
 router.get('/search', async (req, res) => {
   try {
-    const { query, page } = req.query;
+    const { query, page, limit } = req.query;
     if (!query) {
       return res.status(400).json({ message: 'Query is required' });
     }
 
     const pageNum = parseInt(page as string) || 1;
+    const limitNum = parseInt(limit as string) || 50;
     const queryText = String(query);
-    const cacheKey = `search_${queryText}_p${pageNum}`;
+    const cacheKey = `search_${queryText}_p${pageNum}_l${limitNum}`;
     if (cache.has(cacheKey)) {
       return res.json(cache.get(cacheKey));
     }
@@ -225,7 +226,7 @@ router.get('/search', async (req, res) => {
       let fetched: any[] = [];
       try {
         const response = await axios.get(`${JIOSAAVN_API_URL}/api/search/songs`, {
-          params: { query: q, limit: 30, page: pageNum },
+          params: { query: q, limit: limitNum, page: pageNum },
           timeout: 5000,
         });
         if (response.data?.data?.results?.length > 0) {
@@ -236,7 +237,7 @@ router.get('/search', async (req, res) => {
       }
 
       if (fetched.length === 0) {
-        fetched = await jiosaavnSearch(q, 30, pageNum);
+        fetched = await jiosaavnSearch(q, limitNum, pageNum);
       }
 
       return fetched;
@@ -255,10 +256,10 @@ router.get('/search', async (req, res) => {
           merged.push(item);
         }
       });
-      if (merged.length >= 30) break;
+      if (merged.length >= limitNum) break;
     }
 
-    results = merged.slice(0, 30);
+    results = merged.slice(0, limitNum);
 
     const data = { data: { results } };
     cache.set(cacheKey, data);

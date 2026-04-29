@@ -4,16 +4,24 @@ import { Alert } from 'react-native';
 
 const getBestAudioUrl = (track: any): string | null => {
   if (!track) return null;
+  // Already downloaded locally
   if (track.localUri) return track.localUri;
+  // Prefer downloadUrl array (these are the direct download links from JioSaavn)
+  if (Array.isArray(track.downloadUrl) && track.downloadUrl.length > 0) {
+    // Pick highest quality (last entry is usually 320kbps)
+    const last = track.downloadUrl[track.downloadUrl.length - 1];
+    const url = typeof last === 'string' ? last : last?.url;
+    if (url) return url;
+    // Fallback to first entry
+    const first = track.downloadUrl[0];
+    const firstUrl = typeof first === 'string' ? first : first?.url;
+    if (firstUrl) return firstUrl;
+  }
+  if (typeof track.downloadUrl === 'string' && track.downloadUrl) return track.downloadUrl;
+  // Fallback to stream URL
   if (track.url) return track.url;
   if (track.audioUrl) return track.audioUrl;
   if (track.streamUrl) return track.streamUrl;
-  if (Array.isArray(track.downloadUrl) && track.downloadUrl.length > 0) {
-    const last = track.downloadUrl[track.downloadUrl.length - 1];
-    if (typeof last === 'string') return last;
-    if (last?.url) return last.url;
-  }
-  if (typeof track.downloadUrl === 'string') return track.downloadUrl;
   return null;
 };
 

@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   View, Text, StyleSheet, TouchableOpacity, FlatList, 
-  Image, Alert, TextInput, Modal, ScrollView, ActivityIndicator, Dimensions, BackHandler
+  Image, Alert, TextInput, Modal, ScrollView, ActivityIndicator, Dimensions,
+  KeyboardAvoidingView, Platform
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -45,24 +46,8 @@ export default function LibraryScreen() {
     }, [activeTab])
   );
 
-  useFocusEffect(
-    useCallback(() => {
-      const onBackPress = () => {
-        if (showCreateModal) {
-          setShowCreateModal(false);
-          return true;
-        }
-        if (expandedPlaylist) {
-          setExpandedPlaylist(null);
-          return true;
-        }
-        return false;
-      };
-
-      const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
-      return () => subscription.remove();
-    }, [showCreateModal, expandedPlaylist])
-  );
+  // Back handling is done via Modal's onRequestClose prop.
+  // Removed BackHandler to prevent it from intercepting backspace key events in TextInputs.
 
 
   const loadDownloads = async () => { setDownloads(await getDownloadedTracks()); };
@@ -99,7 +84,7 @@ export default function LibraryScreen() {
     setSearching(true);
     try {
       const resp = await axios.get(`${API_URL}/music/search`, {
-        params: { query: searchQuery }, timeout: 10000,
+        params: { query: searchQuery }, timeout: 15000,
       });
       if (resp.data?.data?.results) {
         setSearchResults(resp.data.data.results.map((t: any) => ({
@@ -386,7 +371,7 @@ export default function LibraryScreen() {
 
       {/* Create Playlist Modal */}
       <Modal visible={showCreateModal} transparent animationType="slide" onRequestClose={() => setShowCreateModal(false)}>
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>
@@ -478,7 +463,7 @@ export default function LibraryScreen() {
               </>
             )}
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );

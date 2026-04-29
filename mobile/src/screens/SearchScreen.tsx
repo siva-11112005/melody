@@ -12,7 +12,20 @@ import { API_URL } from '../config/api';
 import { cleanSongTitle, decodeHTMLEntities } from '../utils/textUtils';
 import { applyDownloadedUris } from '../services/downloadService';
 
-const DEFAULT_QUICK_SEARCHES = ['Arijit Singh', 'Dua Lipa', 'AP Dhillon', 'KK', 'Taylor Swift', 'Anirudh'];
+const DEFAULT_QUICK_SEARCHES = ['Anirudh', 'A.R. Rahman', 'Yuvan', 'Sid Sriram', 'Ilaiyaraaja', 'Hip Hop Tamizha'];
+
+// Add tamil context to vague searches so JioSaavn returns Tamil results
+function enrichQuery(query: string): string {
+  const q = query.trim();
+  const lower = q.toLowerCase();
+  // If the query already contains "tamil", don't add more
+  if (lower.includes('tamil')) return q;
+  // If it matches patterns like "2018 songs", "melody songs", "love songs", add "tamil"
+  if (/^\d{4}\b/.test(lower) || /\b(song|songs|melody|hit|hits|movie|film|kuthu|mass)\b/i.test(lower)) {
+    return `${q} tamil`;
+  }
+  return q;
+}
 
 export default function SearchScreen() {
   const [query, setQuery] = useState('');
@@ -76,9 +89,11 @@ export default function SearchScreen() {
     if (!searchQuery) setQuery(q);
     try {
       addRecentSearch(q);
+      // Enrich query with tamil context for vague searches
+      const enriched = enrichQuery(q);
       const response = await axios.get(`${API_URL}/music/search`, {
-        params: { query: q },
-        timeout: 10000,
+        params: { query: enriched },
+        timeout: 15000,
       });
       if (response.data?.data?.results) {
         setResults(response.data.data.results);
@@ -206,7 +221,7 @@ export default function SearchScreen() {
         <Ionicons name="search" size={20} color="#b3b3b3" style={styles.searchIcon} />
         <TextInput
           style={styles.searchInput}
-          placeholder="What do you want to listen to?"
+          placeholder="Song, artist, or movie name..."
           placeholderTextColor="#777"
           value={query}
           onChangeText={(t) => { setQuery(t); if (t.length === 0) { setSearched(false); setResults([]); } }}
@@ -311,7 +326,7 @@ export default function SearchScreen() {
       ) : null}
 
       {/* Add to Playlist Modal */}
-      <Modal visible={showPlaylistModal} transparent animationType="slide">
+      <Modal visible={showPlaylistModal} transparent animationType="slide" onRequestClose={() => setShowPlaylistModal(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>

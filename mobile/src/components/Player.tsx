@@ -48,10 +48,7 @@ export default function Player({ onPress }: PlayerProps) {
 
     const loadAndPlay = async () => {
       // Prevent concurrent loads
-      if (loadingRef.current) {
-        // If already loading, wait for it to finish then try again
-        return;
-      }
+      if (loadingRef.current) return;
       loadingRef.current = true;
 
       try {
@@ -74,21 +71,29 @@ export default function Player({ onPress }: PlayerProps) {
           { shouldPlay: true, progressUpdateIntervalMillis: 500 },
           (status: any) => {
             if (!mountedRef.current) return;
-            if (currentUrlRef.current !== audioUrl) return;
             if (status.isLoaded) {
               const durationMillis = status.durationMillis || 0;
               const positionMillis = status.positionMillis || 0;
 
               if (status.didJustFinish) {
+                // ── Auto-play next song immediately ──
+                // Reset the URL ref so the next song's URL will be accepted
+                currentUrlRef.current = null;
+                
                 const store = usePlayerStore.getState();
                 const hasNext = store.queue.length > 0 && store.currentIndex < store.queue.length - 1;
                 if (hasNext) {
-                  store.playNext();
+                  // Small delay to let the unload complete cleanly
+                  setTimeout(() => {
+                    if (mountedRef.current) {
+                      store.playNext();
+                    }
+                  }, 100);
                   return;
                 }
+                // No next song — stop playing
                 store.setIsPlaying(false);
-                setDuration(durationMillis || store.duration || 0);
-                setPosition(durationMillis || positionMillis);
+                setPosition(0);
                 return;
               }
 
@@ -110,6 +115,15 @@ export default function Player({ onPress }: PlayerProps) {
         soundRef.current = sound;
       } catch (err) {
         console.log('Audio load error:', err);
+        // If load fails, try to auto-skip to next track
+        currentUrlRef.current = null;
+        const store = usePlayerStore.getState();
+        const hasNext = store.queue.length > 0 && store.currentIndex < store.queue.length - 1;
+        if (hasNext) {
+          setTimeout(() => {
+            if (mountedRef.current) store.playNext();
+          }, 500);
+        }
       } finally {
         loadingRef.current = false;
       }

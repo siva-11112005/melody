@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   ActivityIndicator, Image, ScrollView, FlatList, LayoutChangeEvent
@@ -21,30 +21,31 @@ const shuffleArray = (array: any[]) => {
   return newArr;
 };
 
-// Each section has primary + fallback queries to ensure we always get enough songs
-const SECTIONS = [
-  { id: 'trending', title: '🔥 Trending in Tamil', queries: ['trending tamil songs', 'top tamil hits 2024', 'popular tamil songs'] },
-  { id: 'latest', title: '🆕 Latest Tamil Releases', queries: ['latest new tamil songs 2025', 'new tamil movie songs', 'recent tamil hits'] },
-  { id: 'romantic', title: '❤️ Romantic Tamil Songs', queries: ['romantic tamil love songs', 'tamil love melody', 'tamil kadhal songs'] },
-  { id: 'sad', title: '💔 Sad Tamil Songs', queries: ['sad tamil songs emotional', 'tamil sad melody songs', 'heartbreak tamil songs'] },
-  { id: 'mass', title: '🔥 Mass / Energy Tamil Songs', queries: ['tamil mass kuthu dance songs', 'tamil mass entry songs', 'tamil kuthu party'] },
-  { id: 'chill', title: '😌 Chill Tamil Vibes', queries: ['chill tamil melody songs', 'tamil soft melody', 'relaxing tamil songs'] },
-  { id: 'retro', title: '📻 90s Tamil Classics', queries: ['90s tamil classic old songs', 'ilayaraja 90s hits tamil', 'old tamil golden songs'] },
-  { id: 'arrahman', title: '🎹 A.R. Rahman Hits', queries: ['ar rahman tamil hits', 'ar rahman best songs', 'ar rahman oscar songs'] },
-  { id: 'anirudh', title: '🎧 Anirudh Hits', queries: ['anirudh ravichander tamil hits', 'anirudh latest songs', 'anirudh dance songs'] },
-  { id: 'yuvan', title: '🎵 Yuvan Shankar Raja Hits', queries: ['yuvan shankar raja tamil hits', 'yuvan love songs tamil', 'yuvan best melodies'] },
-  { id: 'ilaiyaraaja', title: '👑 Ilaiyaraaja Classics', queries: ['ilaiyaraaja tamil classic songs', 'ilayaraja evergreen hits', 'ilayaraja melody songs'] },
-  { id: 'spb', title: '🎤 SPB Golden Hits', queries: ['sp balasubrahmanyam tamil songs', 'spb melody hits tamil', 'spb ilayaraja tamil'] },
-  { id: 'sidsriram', title: '🌟 Sid Sriram Tamil Hits', queries: ['sid sriram tamil songs', 'sid sriram melody songs', 'sid sriram latest'] },
-  { id: 'hiphop', title: '🎤 Tamil Hip Hop & Rap', queries: ['tamil hip hop rap songs', 'tamil rap independent', 'tamil gaana songs'] },
-  { id: 'unplugged', title: '🎸 Tamil Unplugged', queries: ['tamil unplugged acoustic songs', 'tamil cover songs', 'tamil acoustic melody'] },
-  { id: 'duets', title: '👫 Tamil Duet Songs', queries: ['tamil duet love songs', 'tamil romantic duet hits', 'tamil male female duets'] },
-  { id: 'devotional', title: '🙏 Tamil Devotional', queries: ['tamil devotional songs murugan', 'tamil god songs vinayagar', 'tamil bhakti songs'] },
-  { id: 'workout', title: '💪 Tamil Workout Beats', queries: ['tamil gym workout motivational songs', 'tamil fast beat songs', 'tamil energy songs workout'] },
-  { id: 'item', title: '💃 Tamil Item Songs', queries: ['tamil item dance kuthu songs', 'tamil club dance songs', 'tamil party item numbers'] },
-  { id: 'indie', title: '🎶 Tamil Independent Music', queries: ['tamil independent indie album songs', 'tamil indie band songs', 'tamil album songs love'] },
-  { id: 'kids', title: '👶 Tamil Kids & Fun Songs', queries: ['tamil kids fun songs', 'tamil children rhymes songs', 'tamil animated kids songs'] },
-  { id: 'recommended', title: '🤖 Recommended For You', queries: ['top tamil songs best', 'best tamil songs all time', 'tamil superhit songs collection'] },
+// ── Reduced to 8 primary sections for fast startup ──
+const PRIMARY_SECTIONS = [
+  { id: 'trending', title: 'Trending in Tamil', icon: 'flame', queries: ['trending tamil songs', 'top tamil hits 2024', 'popular tamil songs'] },
+  { id: 'latest', title: 'Latest Tamil Releases', icon: 'sparkles', queries: ['latest new tamil songs 2025', 'new tamil movie songs', 'recent tamil hits'] },
+  { id: 'romantic', title: 'Romantic Tamil Songs', icon: 'heart', queries: ['romantic tamil love songs', 'tamil love melody', 'tamil kadhal songs'] },
+  { id: 'mass', title: 'Mass / Energy Tamil Songs', icon: 'flash', queries: ['tamil mass kuthu dance songs', 'tamil mass entry songs', 'tamil kuthu party'] },
+  { id: 'anirudh', title: 'Anirudh Hits', icon: 'headset', queries: ['anirudh ravichander tamil hits', 'anirudh latest songs', 'anirudh dance songs'] },
+  { id: 'arrahman', title: 'A.R. Rahman Hits', icon: 'musical-notes', queries: ['ar rahman tamil hits', 'ar rahman best songs', 'ar rahman oscar songs'] },
+  { id: 'chill', title: 'Chill Tamil Vibes', icon: 'cafe', queries: ['chill tamil melody songs', 'tamil soft melody', 'relaxing tamil songs'] },
+  { id: 'sad', title: 'Sad Tamil Songs', icon: 'water', queries: ['sad tamil songs emotional', 'tamil sad melody songs', 'heartbreak tamil songs'] },
+];
+
+// ── Extra sections loaded lazily when user scrolls down ──
+const EXTRA_SECTIONS = [
+  { id: 'retro', title: '90s Tamil Classics', icon: 'radio', queries: ['90s tamil classic old songs', 'ilayaraja 90s hits tamil', 'old tamil golden songs'] },
+  { id: 'yuvan', title: 'Yuvan Shankar Raja Hits', icon: 'disc', queries: ['yuvan shankar raja tamil hits', 'yuvan love songs tamil', 'yuvan best melodies'] },
+  { id: 'ilaiyaraaja', title: 'Ilaiyaraaja Classics', icon: 'star', queries: ['ilaiyaraaja tamil classic songs', 'ilayaraja evergreen hits', 'ilayaraja melody songs'] },
+  { id: 'sidsriram', title: 'Sid Sriram Tamil Hits', icon: 'mic-outline', queries: ['sid sriram tamil songs', 'sid sriram melody songs', 'sid sriram latest'] },
+  { id: 'hiphop', title: 'Tamil Hip Hop & Rap', icon: 'volume-high', queries: ['tamil hip hop rap songs', 'tamil rap independent', 'tamil gaana songs'] },
+  { id: 'duets', title: 'Tamil Duet Songs', icon: 'people', queries: ['tamil duet love songs', 'tamil romantic duet hits', 'tamil male female duets'] },
+  { id: 'workout', title: 'Tamil Workout Beats', icon: 'barbell', queries: ['tamil gym workout motivational songs', 'tamil fast beat songs', 'tamil energy songs workout'] },
+  { id: 'devotional', title: 'Tamil Devotional', icon: 'leaf', queries: ['tamil devotional songs murugan', 'tamil god songs vinayagar', 'tamil bhakti songs'] },
+  { id: 'indie', title: 'Tamil Independent Music', icon: 'recording', queries: ['tamil independent indie album songs', 'tamil indie band songs', 'tamil album songs love'] },
+  { id: 'kids', title: 'Tamil Kids & Fun Songs', icon: 'happy', queries: ['tamil kids fun songs', 'tamil children rhymes songs', 'tamil animated kids songs'] },
+  { id: 'recommended', title: 'Recommended For You', icon: 'color-wand', queries: ['top tamil songs best', 'best tamil songs all time', 'tamil superhit songs collection'] },
 ];
 
 interface SectionState {
@@ -61,9 +62,11 @@ const PAGE_SIZE = 5;
 export default function HomeScreen({ navigation }: any) {
   const [sections, setSections] = useState<Record<string, SectionState>>({});
   const [initialLoading, setInitialLoading] = useState<Record<string, boolean>>({});
+  const [extraLoaded, setExtraLoaded] = useState(false);
+  const [loadingExtra, setLoadingExtra] = useState(false);
   const globalSeenRef = useRef<Set<string>>(new Set());
   const listLayoutRef = useRef<Record<string, { layoutWidth: number; contentWidth: number }>>({});
-  const [dynamicSections, setDynamicSections] = useState<typeof SECTIONS>([]);
+  const [dynamicSections, setDynamicSections] = useState<typeof PRIMARY_SECTIONS>([]);
   const { recentlyPlayed, addRecentlyPlayed, loadLibrary } = useLibraryStore();
   const { playTrack } = usePlayerStore();
   const { logout } = useAuthStore();
@@ -71,19 +74,19 @@ export default function HomeScreen({ navigation }: any) {
   useEffect(() => {
     loadLibrary();
     globalSeenRef.current = new Set();
-    fetchAllSections();
+    fetchPrimarySections();
   }, []);
 
   useEffect(() => {
     if (recentlyPlayed.length > 0 && dynamicSections.length === 0) {
       const recentArtists = [...new Set(recentlyPlayed.map(t => cleanSongTitle(t.artist || '')))].filter(a => a && a.length > 2);
       if (recentArtists.length > 0) {
-        // Pick random artists from recent to create variety
         const shuffledArtists = shuffleArray(recentArtists);
         const topArtists = shuffledArtists.slice(0, 2);
         const dynamicBasedOnRecent = topArtists.map(artist => ({
           id: `recent_${artist.replace(/[^a-zA-Z0-9]/g, '')}`,
-          title: `🎧 Because you listened to ${artist}`,
+          title: `Because you listened to ${artist}`,
+          icon: 'headset',
           queries: [`${artist} tamil songs`, `best of ${artist} tamil`, `${artist} hits`]
         }));
         setDynamicSections(dynamicBasedOnRecent);
@@ -92,13 +95,33 @@ export default function HomeScreen({ navigation }: any) {
     }
   }, [recentlyPlayed]);
 
-  const fetchAllSections = async () => {
-    // Fetch in batches of 3
-    for (let i = 0; i < SECTIONS.length; i += 3) {
-      const batch = SECTIONS.slice(i, i + 3);
+  // ── Only load 8 primary sections on startup ──
+  const fetchPrimarySections = async () => {
+    // Fetch all 8 primary sections in parallel (fast startup)
+    await Promise.all(PRIMARY_SECTIONS.map(section => fetchSectionInitial(section)));
+  };
+
+  // ── Lazy-load extra sections when user scrolls near the bottom ──
+  const loadExtraSections = useCallback(async () => {
+    if (extraLoaded || loadingExtra) return;
+    setLoadingExtra(true);
+    // Fetch extras in batches of 4
+    for (let i = 0; i < EXTRA_SECTIONS.length; i += 4) {
+      const batch = EXTRA_SECTIONS.slice(i, i + 4);
       await Promise.all(batch.map(section => fetchSectionInitial(section)));
     }
-  };
+    setExtraLoaded(true);
+    setLoadingExtra(false);
+  }, [extraLoaded, loadingExtra]);
+
+  const handleMainScroll = useCallback((event: any) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    const distanceFromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y;
+    // When the user is within 600px of the bottom, start loading extras
+    if (distanceFromBottom < 600 && !extraLoaded && !loadingExtra) {
+      loadExtraSections();
+    }
+  }, [extraLoaded, loadingExtra, loadExtraSections]);
 
   const getSongKey = (track: any): string => {
     const title = (track.name || track.title || '').toLowerCase().trim();
@@ -126,7 +149,7 @@ export default function HomeScreen({ navigation }: any) {
     return tracks;
   };
 
-  const fetchSectionInitial = async (section: typeof SECTIONS[0]) => {
+  const fetchSectionInitial = async (section: typeof PRIMARY_SECTIONS[0]) => {
     setInitialLoading(prev => ({ ...prev, [section.id]: true }));
     
     let allTracks: any[] = [];
@@ -136,10 +159,9 @@ export default function HomeScreen({ navigation }: any) {
     // Try each query until we have enough for the first page
     for (let qi = 0; qi < section.queries.length && allTracks.length < INITIAL_LOAD_SIZE; qi++) {
       try {
-        const randomPage = Math.floor(Math.random() * 4) + 1; // 1 to 4 for shuffling
         const response = await axios.get(`${API_URL}/music/search`, {
-          params: { query: section.queries[qi], page: randomPage },
-          timeout: 12000,
+          params: { query: section.queries[qi], page: 1, limit: 30 },
+          timeout: 15000,
         });
         if (response.data?.data?.results) {
           let newTracks = deduplicateTracks(response.data.data.results, localSeen);
@@ -169,7 +191,8 @@ export default function HomeScreen({ navigation }: any) {
     const state = sections[sectionId];
     if (!state || state.loadingMore || !state.hasMore) return;
 
-    const sectionDef = SECTIONS.find(s => s.id === sectionId);
+    const allSections = [...PRIMARY_SECTIONS, ...EXTRA_SECTIONS, ...dynamicSections];
+    const sectionDef = allSections.find(s => s.id === sectionId);
     if (!sectionDef) return;
 
     setSections(prev => ({
@@ -197,8 +220,8 @@ export default function HomeScreen({ navigation }: any) {
         const pageToUse = attempt === 0 ? state.page + 1 : 1;
 
         const response = await axios.get(`${API_URL}/music/search`, {
-          params: { query, page: pageToUse },
-          timeout: 12000,
+          params: { query, page: pageToUse, limit: 30 },
+          timeout: 15000,
         });
 
         const results = response.data?.data?.results || [];
@@ -359,13 +382,18 @@ export default function HomeScreen({ navigation }: any) {
     />
   );
 
-  const renderSection = (section: typeof SECTIONS[0]) => {
+  const renderSection = (section: typeof PRIMARY_SECTIONS[0]) => {
     const state = sections[section.id];
     const isLoading = initialLoading[section.id];
 
     return (
       <View key={section.id} style={styles.section}>
-        <Text style={styles.sectionTitle}>{section.title}</Text>
+        <View style={styles.sectionTitleContainer}>
+          {section.icon && (
+            <Ionicons name={section.icon as any} size={22} color="#1DB954" style={styles.sectionIcon} />
+          )}
+          <Text style={styles.sectionTitle}>{section.title}</Text>
+        </View>
         {isLoading ? (
           <View style={styles.loaderRow}>
             <ActivityIndicator size="small" color="#1DB954" />
@@ -374,14 +402,26 @@ export default function HomeScreen({ navigation }: any) {
         ) : state && state.tracks.length > 0 ? (
           renderHorizontalTracks(section.id, state.tracks, state.loadingMore)
         ) : (
-          !isLoading && <Text style={styles.emptyText}>Loading songs...</Text>
+          !isLoading && <Text style={styles.emptyText}>No songs found</Text>
         )}
       </View>
     );
   };
 
+  // All visible sections = dynamic + primary + (if loaded) extra
+  const allVisibleSections = [
+    ...dynamicSections,
+    ...PRIMARY_SECTIONS,
+    ...(extraLoaded ? EXTRA_SECTIONS : []),
+  ];
+
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={styles.container}
+      showsVerticalScrollIndicator={false}
+      onScroll={handleMainScroll}
+      scrollEventThrottle={400}
+    >
       {/* Header */}
       <View style={styles.header}>
         <View>
@@ -390,13 +430,32 @@ export default function HomeScreen({ navigation }: any) {
         </View>
       </View>
 
-      {/* All Tamil Sections including Dynamic */}
-      {[...dynamicSections, ...SECTIONS].map(section => renderSection(section))}
+      {/* All Sections */}
+      {allVisibleSections.map(section => renderSection(section))}
+
+      {/* Loading extras indicator */}
+      {loadingExtra && (
+        <View style={styles.loadingExtraContainer}>
+          <ActivityIndicator size="small" color="#1DB954" />
+          <Text style={styles.loadingExtraText}>Loading more categories...</Text>
+        </View>
+      )}
+
+      {/* Load More Button if extras not yet loaded */}
+      {!extraLoaded && !loadingExtra && (
+        <TouchableOpacity style={styles.loadMoreSectionsBtn} onPress={loadExtraSections}>
+          <Ionicons name="chevron-down" size={20} color="#1DB954" />
+          <Text style={styles.loadMoreSectionsText}>Show More Categories</Text>
+        </TouchableOpacity>
+      )}
 
       {/* Recently Played */}
       {recentlyPlayed.length > 0 && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🔁 Recently Played</Text>
+          <View style={styles.sectionTitleContainer}>
+            <Ionicons name="time" size={22} color="#1DB954" style={styles.sectionIcon} />
+            <Text style={styles.sectionTitle}>Recently Played</Text>
+          </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 20 }}>
             {recentlyPlayed.map((item, index) => (
               <TouchableOpacity
@@ -438,9 +497,12 @@ const styles = StyleSheet.create({
   greeting: { color: '#fff', fontSize: 28, fontWeight: 'bold' },
   subtitle: { color: '#b3b3b3', fontSize: 15, marginTop: 4 },
   logoutBtn: { marginTop: 8, padding: 5 },
+  sectionTitleContainer: {
+    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginBottom: 14, marginTop: 5,
+  },
+  sectionIcon: { marginRight: 8 },
   sectionTitle: {
     color: '#fff', fontSize: 19, fontWeight: 'bold',
-    paddingHorizontal: 20, marginBottom: 14, marginTop: 5,
   },
   section: { marginTop: 18 },
   trackCard: { width: 130, marginLeft: 20 },
@@ -460,4 +522,15 @@ const styles = StyleSheet.create({
     width: 80, justifyContent: 'center', alignItems: 'center', gap: 6,
   },
   loadMoreText: { color: '#888', fontSize: 11 },
+  loadingExtraContainer: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 10, paddingVertical: 20,
+  },
+  loadingExtraText: { color: '#b3b3b3', fontSize: 13 },
+  loadMoreSectionsBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, paddingVertical: 18, marginHorizontal: 20, marginTop: 10,
+    backgroundColor: '#1a1a2e', borderRadius: 12,
+  },
+  loadMoreSectionsText: { color: '#1DB954', fontSize: 14, fontWeight: '600' },
 });
