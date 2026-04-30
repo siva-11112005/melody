@@ -4,24 +4,26 @@ import { Alert } from 'react-native';
 
 const getBestAudioUrl = (track: any): string | null => {
   if (!track) return null;
-  // Already downloaded locally
   if (track.localUri) return track.localUri;
-  // Prefer downloadUrl array (these are the direct download links from JioSaavn)
+  
+  // Try downloadUrl array first (best quality)
   if (Array.isArray(track.downloadUrl) && track.downloadUrl.length > 0) {
-    // Pick highest quality (last entry is usually 320kbps)
+    // Pick highest quality (last item in array)
     const last = track.downloadUrl[track.downloadUrl.length - 1];
-    const url = typeof last === 'string' ? last : last?.url;
-    if (url) return url;
-    // Fallback to first entry
+    if (typeof last === 'string' && last.length > 0) return last;
+    if (last?.url && last.url.length > 0) return last.url;
+    // Fallback to first item
     const first = track.downloadUrl[0];
-    const firstUrl = typeof first === 'string' ? first : first?.url;
-    if (firstUrl) return firstUrl;
+    if (typeof first === 'string' && first.length > 0) return first;
+    if (first?.url && first.url.length > 0) return first.url;
   }
-  if (typeof track.downloadUrl === 'string' && track.downloadUrl) return track.downloadUrl;
-  // Fallback to stream URL
-  if (track.url) return track.url;
-  if (track.audioUrl) return track.audioUrl;
-  if (track.streamUrl) return track.streamUrl;
+  if (typeof track.downloadUrl === 'string' && track.downloadUrl.length > 0) return track.downloadUrl;
+  
+  // Then try direct url fields
+  if (track.url && typeof track.url === 'string' && track.url.length > 0) return track.url;
+  if (track.audioUrl && typeof track.audioUrl === 'string') return track.audioUrl;
+  if (track.streamUrl && typeof track.streamUrl === 'string') return track.streamUrl;
+  
   return null;
 };
 
@@ -60,8 +62,18 @@ export const downloadTrack = async (track: any) => {
     const fileInfo = await FileSystem.getInfoAsync(fileUri);
     if (fileInfo.exists) {
       console.log('Already downloaded:', fileUri);
+      // Make sure metadata is saved
+      const filtered = existing.filter((t: any) => t.id !== track.id);
+      const updated = [...filtered, { 
+        ...track, 
+        localUri: fileUri,
+        downloadedAt: new Date().toISOString(),
+      }];
+      await AsyncStorage.setItem('downloads', JSON.stringify(updated));
       return fileUri;
     }
+
+    console.log('Downloading from URL:', audioUrl);
 
     const downloadResumable = FileSystem.createDownloadResumable(
       audioUrl,

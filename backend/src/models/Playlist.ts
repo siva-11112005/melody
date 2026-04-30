@@ -15,8 +15,10 @@ const playlistSchema = new mongoose.Schema({
     title: String,
     artist: String,
     image: String,
+    artwork: String, // High quality image for player
     url: String, // Streaming URL
     duration: Number,
+    downloadUrl: mongoose.Schema.Types.Mixed, // Array of {quality, url} objects
   }],
   createdAt: {
     type: Date,

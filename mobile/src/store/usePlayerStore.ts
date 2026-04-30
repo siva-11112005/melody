@@ -26,6 +26,17 @@ const normalizeDuration = (value: number | undefined) => {
   return value < 1000 ? value * 1000 : value;
 };
 
+const resolveAudioUrl = (track: any): string | undefined => {
+  if (track.localUri) return track.localUri;
+  if (track.url) return track.url;
+  if (Array.isArray(track.downloadUrl) && track.downloadUrl.length > 0) {
+    const best = track.downloadUrl[track.downloadUrl.length - 1];
+    if (typeof best === 'string') return best;
+    if (best?.url) return best.url;
+  }
+  return undefined;
+};
+
 export const usePlayerStore = create<PlayerState>((set, get) => ({
   currentTrack: null,
   isPlaying: false,
@@ -46,7 +57,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     set({ 
       currentTrack: track, 
       isPlaying: true, 
-      audioUrl: track.localUri || track.url || track.downloadUrl?.[0]?.url, 
+      audioUrl: resolveAudioUrl(track), 
       position: 0,
       duration: normalizeDuration(track?.duration),
       queue,
@@ -62,7 +73,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       set({ 
         currentTrack: nextTrack, 
         isPlaying: true, 
-        audioUrl: nextTrack.localUri || nextTrack.url || nextTrack.downloadUrl?.[0]?.url, 
+        audioUrl: resolveAudioUrl(nextTrack), 
         position: 0,
         duration: normalizeDuration(nextTrack?.duration),
         currentIndex: currentIndex + 1,
@@ -78,7 +89,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       set({ 
         currentTrack: prevTrack, 
         isPlaying: true, 
-        audioUrl: prevTrack.localUri || prevTrack.url || prevTrack.downloadUrl?.[0]?.url, 
+        audioUrl: resolveAudioUrl(prevTrack), 
         position: 0,
         duration: normalizeDuration(prevTrack?.duration),
         currentIndex: currentIndex - 1,

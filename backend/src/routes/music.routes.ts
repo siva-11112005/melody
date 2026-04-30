@@ -4,7 +4,7 @@ import NodeCache from 'node-cache';
 import CryptoJS from 'crypto-js';
 
 const router = Router();
-const cache = new NodeCache({ stdTTL: 7200 }); // Cache for 2 hours
+const cache = new NodeCache({ stdTTL: 1800 }); // Cache for 30 minutes (shorter for variety)
 
 function decodeHTMLEntities(text: string) {
   if (!text) return text;
@@ -18,6 +18,10 @@ function decodeHTMLEntities(text: string) {
 
 // Direct JioSaavn API base URL (official endpoints)
 const JIOSAAVN_BASE = 'https://www.jiosaavn.com/api.php';
+
+// Check if we have a real JioSaavn proxy configured (not localhost)
+const JIOSAAVN_API_URL = process.env.JIOSAAVN_API_URL || '';
+const hasProxy = JIOSAAVN_API_URL && !JIOSAAVN_API_URL.includes('localhost') && !JIOSAAVN_API_URL.includes('127.0.0.1');
 
 function normalizeQuery(value: string) {
   return value.toLowerCase().trim().replace(/\s+/g, ' ');
@@ -79,7 +83,7 @@ export async function jiosaavnSearch(query: string, limit: number = 10, page: nu
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         'Accept': 'application/json',
       },
-      timeout: 8000,
+      timeout: 10000,
     });
 
     if (!response.data?.results) return [];
@@ -172,7 +176,7 @@ router.get('/suggest', async (req, res) => {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       },
-      timeout: 3000,
+      timeout: 5000,
     });
 
     const suggestions: string[] = [];
@@ -211,29 +215,31 @@ router.get('/search', async (req, res) => {
     }
 
     const pageNum = parseInt(page as string) || 1;
-    const limitNum = parseInt(limit as string) || 50;
+    const limitNum = Math.min(parseInt(limit as string) || 30, 50);
     const queryText = String(query);
     const cacheKey = `search_${queryText}_p${pageNum}_l${limitNum}`;
     if (cache.has(cacheKey)) {
       return res.json(cache.get(cacheKey));
     }
 
-    // Try the local JioSaavn proxy first (if running), fall back to direct API
     let results: any[] = [];
-    const JIOSAAVN_API_URL = process.env.JIOSAAVN_API_URL || 'http://localhost:3000';
 
     const fetchResults = async (q: string) => {
       let fetched: any[] = [];
-      try {
-        const response = await axios.get(`${JIOSAAVN_API_URL}/api/search/songs`, {
-          params: { query: q, limit: limitNum, page: pageNum },
-          timeout: 5000,
-        });
-        if (response.data?.data?.results?.length > 0) {
-          fetched = response.data.data.results;
+
+      // Only try proxy if it's a real external URL (not localhost)
+      if (hasProxy) {
+        try {
+          const response = await axios.get(`${JIOSAAVN_API_URL}/api/search/songs`, {
+            params: { query: q, limit: limitNum, page: pageNum },
+            timeout: 5000,
+          });
+          if (response.data?.data?.results?.length > 0) {
+            fetched = response.data.data.results;
+          }
+        } catch {
+          // Proxy failed, fall through to direct API
         }
-      } catch {
-        // Proxy not available, use direct JioSaavn API
       }
 
       if (fetched.length === 0) {
@@ -288,37 +294,24 @@ router.get('/trending', async (req, res) => {
     const queries = langs.map(lang => `latest ${lang} songs`).concat(langs.map(lang => `top ${lang} hits`));
     const allTracks: any[] = [];
 
-    const JIOSAAVN_API_URL = process.env.JIOSAAVN_API_URL || 'http://localhost:3000';
-    let useProxy = true;
-
-    // Test proxy availability with first query
-    try {
-      const testResp = await axios.get(`${JIOSAAVN_API_URL}/api/search/songs`, {
-        params: { query: queries[0], limit: 6 },
-        timeout: 3000,
-      });
-      if (testResp.data?.data?.results) {
-        allTracks.push(...testResp.data.data.results);
-      }
-    } catch {
-      useProxy = false;
+    // Only try proxy if it's a real external URL
+    if (hasProxy) {
+      try {
+        const testResp = await axios.get(`${JIOSAAVN_API_URL}/api/search/songs`, {
+          params: { query: queries[0], limit: 6 },
+          timeout: 3000,
+        });
+        if (testResp.data?.data?.results) {
+          allTracks.push(...testResp.data.data.results);
+        }
+      } catch {}
     }
 
-    // Fetch remaining queries
-    await Promise.all(queries.slice(useProxy ? 1 : 0).map(async (q) => {
+    // Fetch remaining queries using direct API
+    await Promise.all(queries.slice(hasProxy && allTracks.length > 0 ? 1 : 0).map(async (q) => {
       try {
-        if (useProxy) {
-          const resp = await axios.get(`${JIOSAAVN_API_URL}/api/search/songs`, {
-            params: { query: q, limit: 6 },
-            timeout: 3000,
-          });
-          if (resp.data?.data?.results) {
-            allTracks.push(...resp.data.data.results);
-          }
-        } else {
-          const results = await jiosaavnSearch(q, 6);
-          allTracks.push(...results);
-        }
+        const results = await jiosaavnSearch(q, 6);
+        allTracks.push(...results);
       } catch (err: any) {
         console.error(`Trending fetch error for "${q}":`, err?.message);
       }
@@ -351,31 +344,32 @@ router.get('/song/:id', async (req, res) => {
       return res.json(cache.get(cacheKey));
     }
 
-    const JIOSAAVN_API_URL = process.env.JIOSAAVN_API_URL || 'http://localhost:3000';
-
-    try {
-      const response = await axios.get(`${JIOSAAVN_API_URL}/api/songs/${id}`, { timeout: 4000 });
-      const data = response.data;
-      cache.set(cacheKey, data);
-      return res.json(data);
-    } catch {
-      // Direct API fallback
-      const response = await axios.get(JIOSAAVN_BASE, {
-        params: {
-          __call: 'song.getDetails',
-          cc: 'in',
-          _marker: '0',
-          _format: 'json',
-          pids: id,
-        },
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        },
-        timeout: 5000,
-      });
-      cache.set(cacheKey, response.data);
-      return res.json(response.data);
+    // Try proxy only if available
+    if (hasProxy) {
+      try {
+        const response = await axios.get(`${JIOSAAVN_API_URL}/api/songs/${id}`, { timeout: 4000 });
+        const data = response.data;
+        cache.set(cacheKey, data);
+        return res.json(data);
+      } catch {}
     }
+
+    // Direct API fallback
+    const response = await axios.get(JIOSAAVN_BASE, {
+      params: {
+        __call: 'song.getDetails',
+        cc: 'in',
+        _marker: '0',
+        _format: 'json',
+        pids: id,
+      },
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      },
+      timeout: 8000,
+    });
+    cache.set(cacheKey, response.data);
+    return res.json(response.data);
   } catch (error: any) {
     console.error('Song detail error:', error?.message);
     res.status(500).json({ message: 'Error fetching song details' });

@@ -22,7 +22,7 @@ export default function ProfileScreen() {
       setLikedCount(liked ? JSON.parse(liked).length : 0);
       const dl = await getDownloadedTracks();
       setDownloadCount(dl.length);
-      const langs = await AsyncStorage.getItem('languages');
+      const langs = await AsyncStorage.getItem('preferredLanguages');
       setLanguages(langs ? JSON.parse(langs) : []);
       const artists = await AsyncStorage.getItem('favoriteArtists');
       setFavArtists(artists ? JSON.parse(artists) : []);

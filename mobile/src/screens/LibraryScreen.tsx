@@ -95,6 +95,7 @@ export default function LibraryScreen() {
           artwork: t.image?.[t.image.length - 1]?.url || '',
           url: t.downloadUrl?.[t.downloadUrl.length - 1]?.url || t.downloadUrl?.[0]?.url || '',
           duration: t.duration || 0,
+          downloadUrl: t.downloadUrl || [],
         })));
       }
     } catch { setSearchResults([]); }
@@ -214,14 +215,32 @@ export default function LibraryScreen() {
   const toPlayerTrack = (t: any) => {
     const rawDuration = typeof t.duration === 'string' ? parseInt(t.duration, 10) : t.duration;
     const durationMs = rawDuration ? (rawDuration < 1000 ? rawDuration * 1000 : rawDuration) : 0;
+
+    // Resolve artwork: could be 'artwork' field, 'image' field (string or array)
+    let artwork = t.artwork || null;
+    if (!artwork && t.image) {
+      if (typeof t.image === 'string') {
+        artwork = t.image;
+      } else if (Array.isArray(t.image)) {
+        artwork = t.image[t.image.length - 1]?.url || t.image[0]?.url || null;
+      }
+    }
+
+    // Resolve audio URL
+    let audioUrl = t.localUri || t.url || t.audioUrl || t.streamUrl || null;
+    if (!audioUrl && Array.isArray(t.downloadUrl) && t.downloadUrl.length > 0) {
+      const last = t.downloadUrl[t.downloadUrl.length - 1];
+      audioUrl = typeof last === 'string' ? last : last?.url || null;
+    }
+
     return {
       id: t.id,
-      url: t.localUri || t.url || t.audioUrl || t.streamUrl || null,
+      url: audioUrl,
       title: cleanSongTitle(t.title || t.name || ''),
       artist: cleanSongTitle(t.artist || t.primaryArtists || ''),
-      artwork: t.artwork || t.image || null,
+      artwork: artwork,
       duration: durationMs,
-      downloadUrl: t.downloadUrl,
+      downloadUrl: t.downloadUrl || [],
       localUri: t.localUri,
     };
   };

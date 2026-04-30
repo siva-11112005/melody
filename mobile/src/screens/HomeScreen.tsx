@@ -21,7 +21,6 @@ const shuffleArray = (array: any[]) => {
   return newArr;
 };
 
-// ── Reduced to 8 primary sections for fast startup ──
 const PRIMARY_SECTIONS = [
   { id: 'trending', title: 'Trending in Tamil', icon: 'flame', queries: ['trending tamil songs', 'top tamil hits 2024', 'popular tamil songs'] },
   { id: 'latest', title: 'Latest Tamil Releases', icon: 'sparkles', queries: ['latest new tamil songs 2025', 'new tamil movie songs', 'recent tamil hits'] },
@@ -33,7 +32,6 @@ const PRIMARY_SECTIONS = [
   { id: 'sad', title: 'Sad Tamil Songs', icon: 'water', queries: ['sad tamil songs emotional', 'tamil sad melody songs', 'heartbreak tamil songs'] },
 ];
 
-// ── Extra sections loaded lazily when user scrolls down ──
 const EXTRA_SECTIONS = [
   { id: 'retro', title: '90s Tamil Classics', icon: 'radio', queries: ['90s tamil classic old songs', 'ilayaraja 90s hits tamil', 'old tamil golden songs'] },
   { id: 'yuvan', title: 'Yuvan Shankar Raja Hits', icon: 'disc', queries: ['yuvan shankar raja tamil hits', 'yuvan love songs tamil', 'yuvan best melodies'] },
@@ -95,19 +93,19 @@ export default function HomeScreen({ navigation }: any) {
     }
   }, [recentlyPlayed]);
 
-  // ── Only load 8 primary sections on startup ──
+  // Load primary sections sequentially in batches of 2 to avoid overwhelming the backend
   const fetchPrimarySections = async () => {
-    // Fetch all 8 primary sections in parallel (fast startup)
-    await Promise.all(PRIMARY_SECTIONS.map(section => fetchSectionInitial(section)));
+    for (let i = 0; i < PRIMARY_SECTIONS.length; i += 2) {
+      const batch = PRIMARY_SECTIONS.slice(i, i + 2);
+      await Promise.all(batch.map(section => fetchSectionInitial(section)));
+    }
   };
 
-  // ── Lazy-load extra sections when user scrolls near the bottom ──
   const loadExtraSections = useCallback(async () => {
     if (extraLoaded || loadingExtra) return;
     setLoadingExtra(true);
-    // Fetch extras in batches of 4
-    for (let i = 0; i < EXTRA_SECTIONS.length; i += 4) {
-      const batch = EXTRA_SECTIONS.slice(i, i + 4);
+    for (let i = 0; i < EXTRA_SECTIONS.length; i += 2) {
+      const batch = EXTRA_SECTIONS.slice(i, i + 2);
       await Promise.all(batch.map(section => fetchSectionInitial(section)));
     }
     setExtraLoaded(true);
@@ -117,7 +115,6 @@ export default function HomeScreen({ navigation }: any) {
   const handleMainScroll = useCallback((event: any) => {
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
     const distanceFromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y;
-    // When the user is within 600px of the bottom, start loading extras
     if (distanceFromBottom < 600 && !extraLoaded && !loadingExtra) {
       loadExtraSections();
     }
@@ -156,12 +153,11 @@ export default function HomeScreen({ navigation }: any) {
     const localSeen = new Set<string>();
     let queryIndex = 0;
 
-    // Try each query until we have enough for the first page
     for (let qi = 0; qi < section.queries.length && allTracks.length < INITIAL_LOAD_SIZE; qi++) {
       try {
         const response = await axios.get(`${API_URL}/music/search`, {
           params: { query: section.queries[qi], page: 1, limit: 30 },
-          timeout: 15000,
+          timeout: 20000,
         });
         if (response.data?.data?.results) {
           let newTracks = deduplicateTracks(response.data.data.results, localSeen);
@@ -221,7 +217,7 @@ export default function HomeScreen({ navigation }: any) {
 
         const response = await axios.get(`${API_URL}/music/search`, {
           params: { query, page: pageToUse, limit: 30 },
-          timeout: 15000,
+          timeout: 20000,
         });
 
         const results = response.data?.data?.results || [];
@@ -318,7 +314,7 @@ export default function HomeScreen({ navigation }: any) {
       artist: cleanSongTitle(t.artist || t.artists?.primary?.[0]?.name || t.primaryArtists || ''),
       artwork: t.artwork || artwork,
       duration: durationMs,
-      downloadUrl: t.downloadUrl,
+      downloadUrl: t.downloadUrl || dlArr,
       localUri: t.localUri,
     };
   };
@@ -408,7 +404,6 @@ export default function HomeScreen({ navigation }: any) {
     );
   };
 
-  // All visible sections = dynamic + primary + (if loaded) extra
   const allVisibleSections = [
     ...dynamicSections,
     ...PRIMARY_SECTIONS,
@@ -426,7 +421,7 @@ export default function HomeScreen({ navigation }: any) {
       <View style={styles.header}>
         <View>
           <Text style={styles.greeting}>Good {getGreeting()}</Text>
-          <Text style={styles.subtitle}>Tamil Music for You 🎵</Text>
+          <Text style={styles.subtitle}>Tamil Music for You</Text>
         </View>
       </View>
 

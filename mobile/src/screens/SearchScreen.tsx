@@ -149,8 +149,10 @@ export default function SearchScreen() {
       title: cleanSongTitle(track.name),
       artist: cleanSongTitle(track.artists?.primary?.[0]?.name),
       image: track.image?.[track.image.length - 1]?.url || track.image?.[0]?.url || '',
+      artwork: track.image?.[track.image.length - 1]?.url || track.image?.[0]?.url || '',
       url: track.downloadUrl?.[track.downloadUrl.length - 1]?.url || track.downloadUrl?.[0]?.url || '',
       duration: track.duration || 0,
+      downloadUrl: track.downloadUrl || [],
     };
     setSelectedTrack(mapped);
     // Fetch user playlists

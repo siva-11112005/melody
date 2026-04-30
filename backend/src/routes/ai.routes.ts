@@ -65,6 +65,7 @@ const mapToPlaylistTrack = (track: any, fallbackTitle?: string) => ({
   artwork: track.image?.[track.image.length - 1]?.url || track.image?.[0]?.url || '',
   url: track.downloadUrl?.[track.downloadUrl.length - 1]?.url || track.downloadUrl?.[0]?.url || track.url || '',
   duration: track.duration || 0,
+  downloadUrl: track.downloadUrl || [],
 });
 
 async function searchSongsHelper(query: string, limit: number = 10) {
