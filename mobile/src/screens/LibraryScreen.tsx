@@ -153,39 +153,51 @@ export default function LibraryScreen() {
   const handleCreateWithSearch = () => createPlaylistWithTracks(selectedTracks);
 
   const handleCreateWithCsv = async () => {
-    if (!csvSongs.trim() || !newName.trim()) {
-      Alert.alert('Error', 'Enter playlist name and song names'); return;
+    if (!csvSongs.trim()) {
+      Alert.alert('Error', 'Enter song names'); return;
+    }
+    if (!targetPlaylistId && !newName.trim()) {
+      Alert.alert('Error', 'Enter a playlist name'); return;
     }
     setGenerating(true);
     try {
       const names = csvSongs.split(/[\n,]/).map(s => s.trim()).filter(Boolean);
       const resp = await axios.post(`${API_URL}/ai/resolve-songs`,
-        { songNames: names }, { timeout: 30000 }
+        { songNames: names }, { timeout: 60000 }
       );
       if (resp.data?.tracks?.length > 0) {
         await createPlaylistWithTracks(resp.data.tracks);
       } else {
-        Alert.alert('Error', 'Could not find any of those songs');
+        Alert.alert('No Results', 'Could not find any of those songs. Try different song names.');
       }
-    } catch { Alert.alert('Error', 'Failed to resolve songs'); }
+    } catch (err: any) {
+      console.error('CSV resolve error:', err?.message);
+      Alert.alert('Error', 'Failed to resolve songs. Check your internet connection.');
+    }
     finally { setGenerating(false); }
   };
 
   const handleCreateWithAi = async () => {
-    if (!aiPrompt.trim() || !newName.trim()) {
-      Alert.alert('Error', 'Enter playlist name and description'); return;
+    if (!aiPrompt.trim()) {
+      Alert.alert('Error', 'Enter a description for the playlist'); return;
+    }
+    if (!targetPlaylistId && !newName.trim()) {
+      Alert.alert('Error', 'Enter a playlist name'); return;
     }
     setGenerating(true);
     try {
       const resp = await axios.post(`${API_URL}/ai/generate-playlist`,
-        { description: aiPrompt }, { timeout: 45000 }
+        { description: aiPrompt }, { timeout: 60000 }
       );
       if (resp.data?.tracks?.length > 0) {
         await createPlaylistWithTracks(resp.data.tracks);
       } else {
-        Alert.alert('Error', 'AI could not generate playlist');
+        Alert.alert('No Results', 'Could not generate playlist. Try a different description.');
       }
-    } catch { Alert.alert('Error', 'Failed to generate playlist'); }
+    } catch (err: any) {
+      console.error('AI playlist error:', err?.message);
+      Alert.alert('Error', 'Failed to generate playlist. Check your internet connection.');
+    }
     finally { setGenerating(false); }
   };
 
@@ -390,97 +402,116 @@ export default function LibraryScreen() {
 
       {/* Create Playlist Modal */}
       <Modal visible={showCreateModal} transparent animationType="slide" onRequestClose={() => setShowCreateModal(false)}>
-        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={() => setShowCreateModal(false)} style={{ padding: 4 }}>
+                <Ionicons name="arrow-back" size={24} color="#fff" />
+              </TouchableOpacity>
               <Text style={styles.modalTitle}>
                 {targetPlaylistId
-                  ? (createMode === 'search' ? 'Search & Add' : createMode === 'csv' ? 'Add by Names' : '✨ AI Add')
-                  : (createMode === 'manual' ? 'Create Playlist' : createMode === 'search' ? 'Search & Add Songs' : createMode === 'csv' ? 'Add by Song Names' : '✨ AI Playlist')}
+                  ? (createMode === 'search' ? 'Search & Add' : createMode === 'csv' ? 'Add by Names' : 'AI Add')
+                  : (createMode === 'manual' ? 'Create Playlist' : createMode === 'search' ? 'Search & Add Songs' : createMode === 'csv' ? 'Add by Song Names' : 'AI Playlist')}
               </Text>
-              <TouchableOpacity onPress={() => setShowCreateModal(false)}>
+              <TouchableOpacity onPress={() => setShowCreateModal(false)} style={{ padding: 4 }}>
                 <Ionicons name="close" size={24} color="#fff" />
               </TouchableOpacity>
             </View>
 
-            {!targetPlaylistId && (
-              <TextInput style={styles.modalInput} placeholder="Playlist name" placeholderTextColor="#666"
-                value={newName} onChangeText={setNewName} />
-            )}
-            {targetPlaylistId && (
-              <Text style={{ color: '#1DB954', fontSize: 14, marginBottom: 12 }}>Adding to: {newName}</Text>
-            )}
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              {!targetPlaylistId && (
+                <TextInput style={styles.modalInput} placeholder="Playlist name" placeholderTextColor="#666"
+                  value={newName} onChangeText={setNewName} />
+              )}
+              {targetPlaylistId && (
+                <Text style={{ color: '#1DB954', fontSize: 14, marginBottom: 12 }}>Adding to: {newName}</Text>
+              )}
 
-            {createMode === 'manual' && (
-              <TouchableOpacity style={styles.greenBtn} onPress={handleCreateManual}>
-                <Text style={styles.greenBtnText}>Create Empty Playlist</Text>
-              </TouchableOpacity>
-            )}
-
-            {createMode === 'search' && (
-              <>
-                <View style={styles.searchRow}>
-                  <TextInput style={styles.searchInput} placeholder="Search songs..." placeholderTextColor="#666"
-                    value={searchQuery} onChangeText={setSearchQuery} onSubmitEditing={searchSongs} returnKeyType="search" />
-                  <TouchableOpacity style={styles.searchBtn} onPress={searchSongs}>
-                    <Ionicons name="search" size={20} color="#fff" />
-                  </TouchableOpacity>
-                </View>
-                {selectedTracks.length > 0 && (
-                  <Text style={styles.selectedCount}>{selectedTracks.length} songs selected</Text>
-                )}
-                {searching ? <ActivityIndicator color="#1DB954" style={{ marginVertical: 15 }} /> : (
-                  <FlatList data={searchResults} keyExtractor={item => item.id} style={{ maxHeight: 220 }}
-                    renderItem={({ item }) => {
-                      const isSelected = selectedTracks.some(t => t.id === item.id);
-                      return (
-                        <TouchableOpacity style={[styles.searchItem, isSelected && styles.searchItemSelected]} onPress={() => toggleTrackSelection(item)}>
-                          <Image source={{ uri: item.image || '' }} style={styles.searchThumb} />
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.searchItemTitle} numberOfLines={1}>{item.title}</Text>
-                            <Text style={styles.searchItemArtist} numberOfLines={1}>{item.artist}</Text>
-                          </View>
-                          <Ionicons name={isSelected ? "checkmark-circle" : "add-circle-outline"} size={24} color={isSelected ? "#1DB954" : "#888"} />
-                        </TouchableOpacity>
-                      );
-                    }} />
-                )}
-                {selectedTracks.length > 0 && (
-                  <TouchableOpacity style={styles.greenBtn} onPress={handleCreateWithSearch}>
-                    <Text style={styles.greenBtnText}>Create with {selectedTracks.length} Songs</Text>
-                  </TouchableOpacity>
-                )}
-              </>
-            )}
-
-            {createMode === 'csv' && (
-              <>
-                <Text style={styles.hintText}>Enter song names separated by commas</Text>
-                <TextInput style={[styles.modalInput, { height: 80, textAlignVertical: 'top' }]}
-                  placeholder="e.g. Enna Solla, Kannazhaga, Why This Kolaveri"
-                  placeholderTextColor="#555" value={csvSongs} onChangeText={setCsvSongs} multiline />
-                <TouchableOpacity style={styles.greenBtn} onPress={handleCreateWithCsv} disabled={generating}>
-                  {generating ? <ActivityIndicator color="#fff" /> : <Text style={styles.greenBtnText}>Find & Create Playlist</Text>}
+              {createMode === 'manual' && (
+                <TouchableOpacity style={styles.greenBtn} onPress={handleCreateManual}>
+                  <Text style={styles.greenBtnText}>Create Empty Playlist</Text>
                 </TouchableOpacity>
-              </>
-            )}
+              )}
 
-            {createMode === 'ai' && (
-              <>
-                <Text style={styles.hintText}>Describe the playlist you want</Text>
-                <TextInput style={[styles.modalInput, { height: 80, textAlignVertical: 'top' }]}
-                  placeholder="e.g. Sad tamil melodies for rainy night, Anirudh party songs, 90s romantic hits..."
-                  placeholderTextColor="#555" value={aiPrompt} onChangeText={setAiPrompt} multiline />
-                <TouchableOpacity style={[styles.greenBtn, { backgroundColor: '#fd79a8' }]} onPress={handleCreateWithAi} disabled={generating}>
-                  {generating ? <ActivityIndicator color="#fff" /> : (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <Ionicons name="sparkles" size={18} color="#fff" />
-                      <Text style={styles.greenBtnText}>Generate with AI</Text>
-                    </View>
+              {createMode === 'search' && (
+                <>
+                  <View style={styles.searchRow}>
+                    <TextInput style={styles.searchInput} placeholder="Search songs..." placeholderTextColor="#666"
+                      value={searchQuery} onChangeText={setSearchQuery} onSubmitEditing={searchSongs} returnKeyType="search" />
+                    <TouchableOpacity style={styles.searchBtn} onPress={searchSongs}>
+                      <Ionicons name="search" size={20} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                  {selectedTracks.length > 0 && (
+                    <Text style={styles.selectedCount}>{selectedTracks.length} songs selected</Text>
                   )}
-                </TouchableOpacity>
-              </>
-            )}
+                  {searching ? <ActivityIndicator color="#1DB954" style={{ marginVertical: 15 }} /> : (
+                    <FlatList data={searchResults} keyExtractor={item => item.id} style={{ maxHeight: 250 }}
+                      keyboardShouldPersistTaps="handled"
+                      renderItem={({ item }) => {
+                        const isSelected = selectedTracks.some(t => t.id === item.id);
+                        return (
+                          <TouchableOpacity style={[styles.searchItem, isSelected && styles.searchItemSelected]} onPress={() => toggleTrackSelection(item)}>
+                            <Image source={{ uri: item.image || '' }} style={styles.searchThumb} />
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.searchItemTitle} numberOfLines={1}>{item.title}</Text>
+                              <Text style={styles.searchItemArtist} numberOfLines={1}>{item.artist}</Text>
+                            </View>
+                            <Ionicons name={isSelected ? "checkmark-circle" : "add-circle-outline"} size={24} color={isSelected ? "#1DB954" : "#888"} />
+                          </TouchableOpacity>
+                        );
+                      }} />
+                  )}
+                  {selectedTracks.length > 0 && (
+                    <TouchableOpacity style={styles.greenBtn} onPress={handleCreateWithSearch}>
+                      <Text style={styles.greenBtnText}>{targetPlaylistId ? 'Add' : 'Create with'} {selectedTracks.length} Songs</Text>
+                    </TouchableOpacity>
+                  )}
+                </>
+              )}
+
+              {createMode === 'csv' && (
+                <>
+                  <Text style={styles.hintText}>Enter song names separated by commas or new lines</Text>
+                  <TextInput style={[styles.modalInput, { height: 100, textAlignVertical: 'top', paddingTop: 12 }]}
+                    placeholder="e.g. Enna Solla, Kannazhaga, Why This Kolaveri"
+                    placeholderTextColor="#555" value={csvSongs} onChangeText={setCsvSongs} multiline
+                    blurOnSubmit={false} />
+                  <TouchableOpacity style={styles.greenBtn} onPress={handleCreateWithCsv} disabled={generating}>
+                    {generating ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <ActivityIndicator color="#fff" />
+                        <Text style={styles.greenBtnText}>Finding songs...</Text>
+                      </View>
+                    ) : <Text style={styles.greenBtnText}>{targetPlaylistId ? 'Find & Add Songs' : 'Find & Create Playlist'}</Text>}
+                  </TouchableOpacity>
+                </>
+              )}
+
+              {createMode === 'ai' && (
+                <>
+                  <Text style={styles.hintText}>Describe the playlist you want</Text>
+                  <TextInput style={[styles.modalInput, { height: 100, textAlignVertical: 'top', paddingTop: 12 }]}
+                    placeholder="e.g. Sad tamil melodies for rainy night, Anirudh party songs, 90s romantic hits..."
+                    placeholderTextColor="#555" value={aiPrompt} onChangeText={setAiPrompt} multiline
+                    blurOnSubmit={false} />
+                  <TouchableOpacity style={[styles.greenBtn, { backgroundColor: '#fd79a8' }]} onPress={handleCreateWithAi} disabled={generating}>
+                    {generating ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <ActivityIndicator color="#fff" />
+                        <Text style={styles.greenBtnText}>Generating...</Text>
+                      </View>
+                    ) : (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <Ionicons name="sparkles" size={18} color="#fff" />
+                        <Text style={styles.greenBtnText}>{targetPlaylistId ? 'Generate & Add' : 'Generate with AI'}</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                </>
+              )}
+              <View style={{ height: 20 }} />
+            </ScrollView>
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -517,8 +548,8 @@ const styles = StyleSheet.create({
   emptyText: { color: '#555', fontSize: 16, marginTop: 12 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
   modalContent: { backgroundColor: '#1e1e1e', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: '80%' },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
-  modalTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, gap: 12 },
+  modalTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold', flex: 1 },
   modalInput: { backgroundColor: '#2a2a2a', borderRadius: 10, paddingHorizontal: 16, height: 48, color: '#fff', fontSize: 16, marginBottom: 12 },
   hintText: { color: '#888', fontSize: 13, marginBottom: 8 },
   greenBtn: { backgroundColor: '#1DB954', borderRadius: 25, paddingVertical: 14, alignItems: 'center', marginTop: 8 },

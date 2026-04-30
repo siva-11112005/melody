@@ -69,11 +69,15 @@ const mapToPlaylistTrack = (track: any, fallbackTitle?: string) => ({
 });
 
 async function searchSongsHelper(query: string, limit: number = 10) {
-  const JIOSAAVN_API_URL = process.env.JIOSAAVN_API_URL || 'http://localhost:3000';
-  try {
-    const res = await axios.get(`${JIOSAAVN_API_URL}/api/search/songs`, { params: { query, limit }, timeout: 3000 });
-    if (res.data?.data?.results?.length > 0) return res.data.data.results;
-  } catch (err) {}
+  const JIOSAAVN_API_URL = process.env.JIOSAAVN_API_URL || '';
+  const hasProxy = JIOSAAVN_API_URL && !JIOSAAVN_API_URL.includes('localhost') && !JIOSAAVN_API_URL.includes('127.0.0.1');
+  
+  if (hasProxy) {
+    try {
+      const res = await axios.get(`${JIOSAAVN_API_URL}/api/search/songs`, { params: { query, limit }, timeout: 5000 });
+      if (res.data?.data?.results?.length > 0) return res.data.data.results;
+    } catch (err) {}
+  }
   return await jiosaavnSearch(query, limit);
 }
 
