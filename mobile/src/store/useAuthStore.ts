@@ -17,27 +17,47 @@ export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   isReady: false,
   onboardingComplete: false,
-  
+
   setAuth: async (token, user) => {
     await AsyncStorage.setItem('token', token);
     await AsyncStorage.setItem('user', JSON.stringify(user));
     set({ token, user });
   },
-  
+
   logout: async () => {
     await AsyncStorage.removeItem('token');
     await AsyncStorage.removeItem('user');
     await AsyncStorage.removeItem('onboardingComplete');
     set({ token: null, user: null, onboardingComplete: false });
   },
-  
+
   checkAuth: async () => {
-    const token = await AsyncStorage.getItem('token');
-    const userStr = await AsyncStorage.getItem('user');
-    const onboarding = await AsyncStorage.getItem('onboardingComplete');
-    if (token && userStr) {
-      set({ token, user: JSON.parse(userStr), isReady: true, onboardingComplete: onboarding === 'true' });
-    } else {
+    try {
+      // Timeout wrapper — if AsyncStorage hangs for 2s, proceed anyway
+      const withTimeout = <T>(promise: Promise<T>, fallback: T): Promise<T> =>
+        Promise.race([
+          promise,
+          new Promise<T>((resolve) => setTimeout(() => resolve(fallback), 2000)),
+        ]);
+
+      const token = await withTimeout(AsyncStorage.getItem('token'), null);
+      const userStr = await withTimeout(AsyncStorage.getItem('user'), null);
+      const onboarding = await withTimeout(AsyncStorage.getItem('onboardingComplete'), null);
+
+      if (token && userStr) {
+        try {
+          const user = JSON.parse(userStr);
+          set({ token, user, isReady: true, onboardingComplete: onboarding === 'true' });
+        } catch {
+          // Corrupted JSON in storage — clear and proceed as logged out
+          await AsyncStorage.multiRemove(['token', 'user', 'onboardingComplete']);
+          set({ isReady: true });
+        }
+      } else {
+        set({ isReady: true });
+      }
+    } catch {
+      // Any error → just mark ready so app doesn't hang
       set({ isReady: true });
     }
   },

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
@@ -11,11 +11,21 @@ export default function App() {
   const { isReady, checkAuth } = useAuthStore();
   const [fontsLoaded] = useFonts(Ionicons.font);
 
+  // Force-unblock the loading screen after 3 seconds maximum
+  // This prevents the app from getting stuck if fonts/auth hang
+  const [forceReady, setForceReady] = useState(false);
+
   useEffect(() => {
     checkAuth();
+    const timer = setTimeout(() => {
+      setForceReady(true);
+    }, 3000);
+    return () => clearTimeout(timer);
   }, []);
 
-  if (!isReady || !fontsLoaded) {
+  const appReady = (isReady && fontsLoaded) || forceReady;
+
+  if (!appReady) {
     return (
       <View style={styles.splash}>
         <ActivityIndicator size="large" color="#1DB954" />
