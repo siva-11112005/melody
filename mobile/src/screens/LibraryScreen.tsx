@@ -33,6 +33,8 @@ export default function LibraryScreen() {
   const [searching, setSearching] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [targetPlaylistId, setTargetPlaylistId] = useState<string | null>(null);
+  const [showResultsView, setShowResultsView] = useState(false);
+  const [tempResults, setTempResults] = useState<any[]>([]);
   const { recentlyPlayed, loadLibrary } = useLibraryStore();
   const { playTrack } = usePlayerStore();
   const createOptionWidth = (Dimensions.get('window').width - 60) / 4;
@@ -67,6 +69,20 @@ export default function LibraryScreen() {
     } catch { setPlaylists([]); }
   };
 
+  const removeLiked = async (trackId: string) => {
+    const data = await AsyncStorage.getItem('likedSongs');
+    const liked = data ? JSON.parse(data) : [];
+    const updated = liked.filter((s: any) => s.id !== trackId);
+    await AsyncStorage.setItem('likedSongs', JSON.stringify(updated));
+    setLikedSongs(updated);
+  };
+
+  const removeDownloadItem = async (trackId: string) => {
+    const { removeDownload } = await import('../services/downloadService');
+    await removeDownload(trackId);
+    loadDownloads();
+  };
+
   const openCreateModal = (mode: 'manual' | 'search' | 'ai' | 'csv', existingPlaylistId?: string) => {
     setCreateMode(mode);
     setTargetPlaylistId(existingPlaylistId || null);
@@ -76,6 +92,8 @@ export default function LibraryScreen() {
     setSearchQuery('');
     setSearchResults([]);
     setSelectedTracks([]);
+    setTempResults([]);
+    setShowResultsView(false);
     setShowCreateModal(true);
   };
 
@@ -103,6 +121,12 @@ export default function LibraryScreen() {
   };
 
   const toggleTrackSelection = (track: any) => {
+    const exists = selectedTracks.find(t => t.id === track.id);
+    if (exists) setSelectedTracks(selectedTracks.filter(t => t.id !== track.id));
+    else setSelectedTracks([...selectedTracks, track]);
+  };
+
+  const toggleTempSelection = (track: any) => {
     const exists = selectedTracks.find(t => t.id === track.id);
     if (exists) setSelectedTracks(selectedTracks.filter(t => t.id !== track.id));
     else setSelectedTracks([...selectedTracks, track]);
@@ -166,7 +190,9 @@ export default function LibraryScreen() {
         { songNames: names }, { timeout: 60000 }
       );
       if (resp.data?.tracks?.length > 0) {
-        await createPlaylistWithTracks(resp.data.tracks);
+        setTempResults(resp.data.tracks);
+        setSelectedTracks(resp.data.tracks);
+        setShowResultsView(true);
       } else {
         Alert.alert('No Results', 'Could not find any of those songs. Try different song names.');
       }
@@ -190,7 +216,9 @@ export default function LibraryScreen() {
         { description: aiPrompt }, { timeout: 60000 }
       );
       if (resp.data?.tracks?.length > 0) {
-        await createPlaylistWithTracks(resp.data.tracks);
+        setTempResults(resp.data.tracks);
+        setSelectedTracks(resp.data.tracks);
+        setShowResultsView(true);
       } else {
         Alert.alert('No Results', 'Could not generate playlist. Try a different description.');
       }
@@ -272,7 +300,7 @@ export default function LibraryScreen() {
     { key: 'liked', label: 'Liked', icon: 'heart' },
   ];
 
-  const renderTrackItem = (track: any, playlistId?: string, contextTracks?: any[]) => (
+  const renderTrackItem = (track: any, playlistId?: string, contextTracks?: any[], type?: 'playlist' | 'liked' | 'download') => (
     <TouchableOpacity style={styles.trackItem} onPress={() => { void handlePlay(track, contextTracks); }} activeOpacity={0.6} key={track.id}>
       <Image source={{ uri: track.artwork || track.image || 'https://placehold.co/50x50/282828/fff?text=♪' }} style={styles.trackImage} />
       <View style={styles.trackInfo}>
@@ -281,6 +309,16 @@ export default function LibraryScreen() {
       </View>
       {playlistId && (
         <TouchableOpacity onPress={() => removeFromPlaylist(playlistId, track.id)} style={styles.removeBtn}>
+          <Ionicons name="trash-outline" size={18} color="#e74c3c" />
+        </TouchableOpacity>
+      )}
+      {type === 'liked' && (
+        <TouchableOpacity onPress={() => removeLiked(track.id)} style={styles.removeBtn}>
+          <Ionicons name="heart-dislike-outline" size={18} color="#e74c3c" />
+        </TouchableOpacity>
+      )}
+      {type === 'download' && (
+        <TouchableOpacity onPress={() => removeDownloadItem(track.id)} style={styles.removeBtn}>
           <Ionicons name="trash-outline" size={18} color="#e74c3c" />
         </TouchableOpacity>
       )}
@@ -391,13 +429,13 @@ export default function LibraryScreen() {
         <FlatList data={downloads} keyExtractor={(item, i) => item.id || String(i)}
           contentContainerStyle={{ paddingBottom: 140 }}
           ListEmptyComponent={renderEmpty('No downloaded songs', 'download-outline')}
-          renderItem={({ item }) => renderTrackItem(item, undefined, downloads)} />
+          renderItem={({ item }) => renderTrackItem(item, undefined, downloads, 'download')} />
       )}
       {activeTab === 'liked' && (
         <FlatList data={likedSongs} keyExtractor={(item, i) => item.id || String(i)}
           contentContainerStyle={{ paddingBottom: 140 }}
           ListEmptyComponent={renderEmpty('No liked songs yet', 'heart-outline')}
-          renderItem={({ item }) => renderTrackItem(item, undefined, likedSongs)} />
+          renderItem={({ item }) => renderTrackItem(item, undefined, likedSongs, 'liked')} />
       )}
 
       {/* Create Playlist Modal */}
@@ -470,7 +508,37 @@ export default function LibraryScreen() {
                 </>
               )}
 
-              {createMode === 'csv' && (
+              {/* Results Selection View (for CSV and AI) */}
+              {showResultsView && (
+                <>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <Text style={styles.selectedCount}>{selectedTracks.length} songs selected</Text>
+                    <TouchableOpacity onPress={() => setShowResultsView(false)}>
+                      <Text style={{ color: '#888', fontSize: 13 }}>Change search</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <FlatList data={tempResults} keyExtractor={(item, i) => item.id || String(i)} style={{ maxHeight: 300 }}
+                    keyboardShouldPersistTaps="handled"
+                    renderItem={({ item }) => {
+                      const isSelected = selectedTracks.some(t => t.id === item.id);
+                      return (
+                        <TouchableOpacity style={[styles.searchItem, isSelected && styles.searchItemSelected]} onPress={() => toggleTempSelection(item)}>
+                          <Image source={{ uri: item.image || item.artwork || '' }} style={styles.searchThumb} />
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.searchItemTitle} numberOfLines={1}>{item.title}</Text>
+                            <Text style={styles.searchItemArtist} numberOfLines={1}>{item.artist}</Text>
+                          </View>
+                          <Ionicons name={isSelected ? "checkmark-circle" : "add-circle-outline"} size={24} color={isSelected ? "#1DB954" : "#888"} />
+                        </TouchableOpacity>
+                      );
+                    }} />
+                  <TouchableOpacity style={[styles.greenBtn, { marginTop: 20 }]} onPress={() => createPlaylistWithTracks(selectedTracks)}>
+                    <Text style={styles.greenBtnText}>{targetPlaylistId ? 'Add' : 'Create with'} {selectedTracks.length} Songs</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+
+              {createMode === 'csv' && !showResultsView && (
                 <>
                   <Text style={styles.hintText}>Enter song names separated by commas or new lines</Text>
                   <TextInput style={[styles.modalInput, { height: 100, textAlignVertical: 'top', paddingTop: 12 }]}
@@ -488,7 +556,7 @@ export default function LibraryScreen() {
                 </>
               )}
 
-              {createMode === 'ai' && (
+              {createMode === 'ai' && !showResultsView && (
                 <>
                   <Text style={styles.hintText}>Describe the playlist you want</Text>
                   <TextInput style={[styles.modalInput, { height: 100, textAlignVertical: 'top', paddingTop: 12 }]}

@@ -29,85 +29,94 @@ const getBestAudioUrl = (track: any): string | null => {
 
 export const downloadTrack = async (track: any) => {
   try {
-    // Get the best available URL
-    let audioUrl = getBestAudioUrl(track);
-    
-    if (!audioUrl) {
-      throw new Error('No stream URL available for this track');
-    }
-
-    if (audioUrl.startsWith('file://')) {
-      return audioUrl;
-    }
-
-    if (audioUrl.startsWith('http://')) {
-      audioUrl = audioUrl.replace('http://', 'https://');
-    }
-
     const existingStr = await AsyncStorage.getItem('downloads');
     const existing = existingStr ? JSON.parse(existingStr) : [];
+    
+    // 1. Check if already downloaded
     const existingTrack = existing.find((t: any) => t.id === track.id && t.localUri);
     if (existingTrack?.localUri) {
       const info = await FileSystem.getInfoAsync(existingTrack.localUri);
-      if (info.exists) {
-        return existingTrack.localUri;
-      }
+      if (info.exists) return existingTrack.localUri;
+    }
+
+    // 2. Collect all potential URLs to try
+    const urlsToTry: string[] = [];
+    
+    // Highest quality first
+    if (Array.isArray(track.downloadUrl) && track.downloadUrl.length > 0) {
+      // Create a copy and reverse to get highest quality first
+      const sorted = [...track.downloadUrl].reverse();
+      sorted.forEach((item: any) => {
+        const u = typeof item === 'string' ? item : item?.url;
+        if (u && u.startsWith('http')) urlsToTry.push(u);
+      });
     }
     
-    // Create a safe filename
+    // Add direct URL fields as fallbacks
+    const directUrl = track.url || track.audioUrl || track.streamUrl;
+    if (directUrl && directUrl.startsWith('http') && !urlsToTry.includes(directUrl)) {
+      urlsToTry.push(directUrl);
+    }
+
+    if (urlsToTry.length === 0) {
+      throw new Error('No valid download URLs found for this track');
+    }
+
+    // 3. Prepare for download
     const safeTitle = (track.title || 'unknown').replace(/[^a-zA-Z0-9]/g, '_').substring(0, 50);
     const fileUri = `${FileSystem.documentDirectory}${track.id || Date.now()}_${safeTitle}.m4a`;
-    
-    // Check if already downloaded
-    const fileInfo = await FileSystem.getInfoAsync(fileUri);
-    if (fileInfo.exists) {
-      console.log('Already downloaded:', fileUri);
-      // Make sure metadata is saved
-      const filtered = existing.filter((t: any) => t.id !== track.id);
-      const updated = [...filtered, { 
-        ...track, 
-        localUri: fileUri,
-        downloadedAt: new Date().toISOString(),
-      }];
-      await AsyncStorage.setItem('downloads', JSON.stringify(updated));
-      return fileUri;
-    }
 
-    console.log('Downloading from URL:', audioUrl);
+    // 4. Try each URL until one works
+    let lastError = null;
+    for (let audioUrl of urlsToTry) {
+      try {
+        console.log(`Attempting download for ${track.title} from: ${audioUrl}`);
+        
+        // Ensure HTTPS
+        if (audioUrl.startsWith('http://')) {
+          audioUrl = audioUrl.replace('http://', 'https://');
+        }
 
-    const downloadResumable = FileSystem.createDownloadResumable(
-      audioUrl,
-      fileUri,
-      {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'Referer': 'https://www.jiosaavn.com',
-        },
-      },
-      (downloadProgress) => {
-        const progress = downloadProgress.totalBytesWritten / downloadProgress.totalBytesExpectedToWrite;
-        console.log(`Downloading ${track.title}: ${Math.round(progress * 100)}%`);
+        const downloadResumable = FileSystem.createDownloadResumable(
+          audioUrl,
+          fileUri,
+          {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+              'Referer': 'https://www.jiosaavn.com/',
+            },
+          }
+        );
+
+        const result = await downloadResumable.downloadAsync();
+        
+        if (result && result.uri) {
+          // Verify file exists and is not empty
+          const info = await FileSystem.getInfoAsync(result.uri);
+          if (info.exists && info.size > 1000) { // At least 1KB
+            console.log(`Download successful: ${result.uri} (${info.size} bytes)`);
+            
+            // Save metadata
+            const filtered = existing.filter((t: any) => t.id !== track.id);
+            const updated = [...filtered, { 
+              ...track, 
+              localUri: result.uri,
+              downloadedAt: new Date().toISOString(),
+            }];
+            await AsyncStorage.setItem('downloads', JSON.stringify(updated));
+            return result.uri;
+          }
+        }
+      } catch (err: any) {
+        console.log(`Failed to download from ${audioUrl}:`, err.message);
+        lastError = err;
+        // Continue to next URL
       }
-    );
-
-    const result = await downloadResumable.downloadAsync();
-    
-    if (result && result.uri) {
-      // Save metadata to local storage for the library
-      // Avoid duplicate entries
-      const filtered = existing.filter((t: any) => t.id !== track.id);
-      const updated = [...filtered, { 
-        ...track, 
-        localUri: result.uri,
-        downloadedAt: new Date().toISOString(),
-      }];
-      await AsyncStorage.setItem('downloads', JSON.stringify(updated));
-      return result.uri;
     }
-    
-    throw new Error('Download returned no result');
+
+    throw lastError || new Error('All download attempts failed');
   } catch (error: any) {
-    console.error('Download error:', error?.message || error);
+    console.error('Download service error:', error?.message || error);
     throw error;
   }
 };
