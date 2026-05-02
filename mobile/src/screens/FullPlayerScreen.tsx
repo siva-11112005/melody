@@ -190,7 +190,9 @@ export default function FullPlayerScreen({ navigation }: any) {
           <Ionicons name="chevron-down" size={28} color="#fff" />
         </TouchableOpacity>
         <View style={styles.headerTitleContainer}>
-          <Image source={require('../../assets/logo.png')} style={styles.headerLogo} />
+          <View style={styles.headerLogoContainer}>
+            <Ionicons name="musical-notes" size={24} color="#8B5CF6" />
+          </View>
           <Text style={styles.headerTitle}>Now Playing</Text>
         </View>
         <TouchableOpacity style={styles.headerBtn} onPress={openPlaylistModal}>
@@ -366,7 +368,12 @@ const styles = StyleSheet.create({
   },
   headerBtn: { width: 40, alignItems: 'center' },
   headerTitleContainer: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  headerLogo: { width: 24, height: 24, borderRadius: 4 },
+  headerLogoContainer: {
+    marginRight: 2,
+    backgroundColor: 'rgba(139, 92, 246, 0.1)',
+    padding: 4,
+    borderRadius: 8,
+  },
   headerTitle: { color: '#ccc', fontSize: 13, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase' },
   content: { alignItems: 'center', paddingHorizontal: 30, paddingBottom: 40 },
   artworkContainer: {

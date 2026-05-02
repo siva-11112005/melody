@@ -418,7 +418,9 @@ export default function HomeScreen({ navigation }: any) {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
-          <Image source={require('../../assets/logo.png')} style={styles.logo} />
+          <View style={styles.logoContainer}>
+            <Ionicons name="musical-notes" size={32} color="#8B5CF6" />
+          </View>
           <View>
             <Text style={styles.greeting}>Good {getGreeting()}</Text>
             <Text style={styles.subtitle}>Tamil Music for You</Text>
@@ -494,7 +496,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
   },
   headerContent: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  logo: { width: 40, height: 40, borderRadius: 8 },
+  logoContainer: {
+    marginRight: 4,
+    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+    padding: 8,
+    borderRadius: 12,
+  },
   greeting: { color: '#fff', fontSize: 22, fontWeight: 'bold' },
   subtitle: { color: '#b3b3b3', fontSize: 13, marginTop: 2 },
   headerIconBtn: { padding: 4 },
