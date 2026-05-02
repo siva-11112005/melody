@@ -418,7 +418,7 @@ export default function HomeScreen({ navigation }: any) {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
-          <Image source={require('../../assets/logo.png')} style={styles.logo} />
+          <Image source={require('../../../assets/logo.png')} style={styles.logo} />
           <View>
             <Text style={styles.greeting}>Good {getGreeting()}</Text>
             <Text style={styles.subtitle}>Tamil Music for You</Text>
