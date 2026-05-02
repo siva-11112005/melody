@@ -368,16 +368,20 @@ export default function LibraryScreen() {
       {playlists.length === 0 ? renderEmpty('No playlists yet', 'musical-notes-outline') : (
         playlists.map((pl) => (
           <View key={pl._id}>
-            <TouchableOpacity style={styles.playlistRow}
-              onPress={() => setExpandedPlaylist(expandedPlaylist === pl._id ? null : pl._id)}
-              onLongPress={() => deletePlaylist(pl._id, pl.name)}>
-              <View style={styles.playlistIcon}><Ionicons name="musical-notes" size={22} color="#1DB954" /></View>
-              <View style={styles.playlistMeta}>
-                <Text style={styles.playlistName}>{pl.name}</Text>
-                <Text style={styles.playlistCount}>{pl.tracks?.length || 0} songs</Text>
-              </View>
-              <Ionicons name={expandedPlaylist === pl._id ? "chevron-up" : "chevron-down"} size={20} color="#888" />
-            </TouchableOpacity>
+            <View style={styles.playlistRow}>
+              <TouchableOpacity style={styles.playlistMain}
+                onPress={() => setExpandedPlaylist(expandedPlaylist === pl._id ? null : pl._id)}>
+                <View style={styles.playlistIcon}><Ionicons name="musical-notes" size={22} color="#1DB954" /></View>
+                <View style={styles.playlistMeta}>
+                  <Text style={styles.playlistName}>{pl.name}</Text>
+                  <Text style={styles.playlistCount}>{pl.tracks?.length || 0} songs</Text>
+                </View>
+                <Ionicons name={expandedPlaylist === pl._id ? "chevron-up" : "chevron-down"} size={20} color="#888" />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => deletePlaylist(pl._id, pl.name)} style={styles.playlistDeleteBtn}>
+                <Ionicons name="trash-outline" size={18} color="#e74c3c" />
+              </TouchableOpacity>
+            </View>
             {expandedPlaylist === pl._id && (
               <View style={styles.playlistTracks}>
                 {pl.tracks?.length > 0 && pl.tracks.map((t: any) => renderTrackItem(t, pl._id, pl.tracks))}
@@ -407,7 +411,12 @@ export default function LibraryScreen() {
   );
 
   return (
-    <View style={styles.container}>
+      <View style={styles.topBranding}>
+        <View style={styles.logoContainer}>
+          <Ionicons name="musical-notes" size={24} color="#8B5CF6" />
+        </View>
+        <Text style={styles.brandTitle}>Tamil Music</Text>
+      </View>
       <Text style={styles.header}>Your Library</Text>
       <View style={styles.tabBar}>
         {TABS.map(tab => (
@@ -591,8 +600,11 @@ export default function LibraryScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#121212', paddingTop: 60 },
-  header: { color: '#fff', fontSize: 30, fontWeight: 'bold', paddingHorizontal: 20, marginBottom: 15 },
+  container: { flex: 1, backgroundColor: '#121212' },
+  topBranding: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 20, paddingTop: 60, marginBottom: 5 },
+  logoContainer: { backgroundColor: 'rgba(139, 92, 246, 0.15)', padding: 8, borderRadius: 12 },
+  brandTitle: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
+  header: { color: '#fff', fontSize: 28, fontWeight: 'bold', paddingHorizontal: 20, marginBottom: 15 },
   tabBar: { flexDirection: 'row', paddingHorizontal: 15, marginBottom: 15, gap: 8 },
   tab: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: '#2a2a2a' },
   activeTab: { backgroundColor: '#1DB954' },
@@ -602,11 +614,13 @@ const styles = StyleSheet.create({
   createOptionBtn: { alignItems: 'center', width: (375 - 60) / 4 },
   createIcon: { width: 50, height: 50, borderRadius: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
   createOptionText: { color: '#ccc', fontSize: 11, textAlign: 'center' },
-  playlistRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 20, gap: 14 },
-  playlistIcon: { width: 50, height: 50, borderRadius: 8, backgroundColor: '#1a1a2e', alignItems: 'center', justifyContent: 'center' },
+  playlistRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 0.5, borderBottomColor: '#222' },
+  playlistMain: { flex: 1, flexDirection: 'row', alignItems: 'center' },
+  playlistIcon: { width: 44, height: 44, borderRadius: 10, backgroundColor: '#2a2a2a', alignItems: 'center', justifyContent: 'center', marginRight: 15 },
   playlistMeta: { flex: 1 },
-  playlistName: { color: '#fff', fontSize: 16, fontWeight: '500' },
-  playlistCount: { color: '#888', fontSize: 12, marginTop: 2 },
+  playlistName: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  playlistCount: { color: '#888', fontSize: 12, marginTop: 4 },
+  playlistDeleteBtn: { padding: 10, marginLeft: 10 },
   playlistTracks: { paddingLeft: 20, backgroundColor: '#1a1a1a' },
   emptyPlaylistText: { color: '#555', fontSize: 13, paddingVertical: 15, paddingHorizontal: 40, textAlign: 'center' },
   trackItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 20 },

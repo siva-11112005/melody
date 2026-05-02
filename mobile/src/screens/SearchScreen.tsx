@@ -216,6 +216,12 @@ export default function SearchScreen() {
 
   return (
     <View style={styles.container}>
+      <View style={styles.topBranding}>
+        <View style={styles.logoContainer}>
+          <Ionicons name="musical-notes" size={24} color="#8B5CF6" />
+        </View>
+        <Text style={styles.brandTitle}>Tamil Music</Text>
+      </View>
       <Text style={styles.header}>Search</Text>
       
       {/* Search Bar */}
@@ -390,8 +396,11 @@ export default function SearchScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#121212', paddingTop: 60 },
-  header: { color: '#fff', fontSize: 30, fontWeight: 'bold', marginBottom: 20, paddingHorizontal: 20 },
+  container: { flex: 1, backgroundColor: '#121212' },
+  topBranding: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 20, paddingTop: 60, marginBottom: 5 },
+  logoContainer: { backgroundColor: 'rgba(139, 92, 246, 0.15)', padding: 8, borderRadius: 12 },
+  brandTitle: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
+  header: { color: '#fff', fontSize: 28, fontWeight: 'bold', paddingHorizontal: 20, marginBottom: 15 },
   searchBar: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: '#2a2a2a',
     borderRadius: 12, paddingHorizontal: 15, height: 48, marginHorizontal: 20, marginBottom: 10,

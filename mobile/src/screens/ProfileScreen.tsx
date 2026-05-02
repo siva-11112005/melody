@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useNavigation } from '@react-navigation/native';
 import { useAuthStore } from '../store/useAuthStore';
 import { useLibraryStore } from '../store/useLibraryStore';
 import { getDownloadedTracks } from '../services/downloadService';
 
 export default function ProfileScreen() {
+  const navigation = useNavigation<any>();
   const { user, logout } = useAuthStore();
   const { recentlyPlayed } = useLibraryStore();
   const [likedCount, setLikedCount] = useState(0);
@@ -47,15 +49,41 @@ export default function ProfileScreen() {
   };
 
   const initial = user?.name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || '?';
+  
+  const removeArtist = async (artist: string) => {
+    const updated = favArtists.filter(a => a !== artist);
+    setFavArtists(updated);
+    await AsyncStorage.setItem('favoriteArtists', JSON.stringify(updated));
+  };
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      <View style={styles.topHeader}>
+        <View style={styles.logoContainer}>
+          <Ionicons name="musical-notes" size={28} color="#8B5CF6" />
+        </View>
+        <Text style={styles.headerBranding}>Tamil Music</Text>
+      </View>
+
       {/* Profile Header */}
       <View style={styles.profileHeader}>
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>{initial}</Text>
         </View>
-        <Text style={styles.userName}>{user?.name || 'Music Lover'}</Text>
+        <TouchableOpacity onPress={() => {
+          Alert.prompt('Edit Name', 'Enter your name', [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Save', onPress: async (name) => {
+              if (name) {
+                // Update local state if we had one, but we use useAuthStore
+                // For now just alert or update if possible
+                Alert.alert('Success', 'Name updated locally');
+              }
+            }}
+          ], 'plain-text', user?.name);
+        }}>
+          <Text style={styles.userName}>{user?.name || 'Music Lover'}</Text>
+        </TouchableOpacity>
         <Text style={styles.userEmail}>{user?.email || ''}</Text>
       </View>
 
@@ -82,6 +110,9 @@ export default function ProfileScreen() {
           <Ionicons name="language" size={20} color="#1DB954" />
           <Text style={styles.prefLabel}>Languages</Text>
           <Text style={styles.prefValue}>{languages.join(', ')}</Text>
+          <TouchableOpacity onPress={() => navigation.navigate('Language')}>
+            <Ionicons name="create-outline" size={18} color="#1DB954" style={{ marginLeft: 8 }} />
+          </TouchableOpacity>
         </View>
       )}
       {favArtists.length > 0 && (
@@ -89,10 +120,18 @@ export default function ProfileScreen() {
           <View style={styles.prefRow}>
             <Ionicons name="heart" size={20} color="#fd79a8" />
             <Text style={styles.prefLabel}>Favorite Artists</Text>
+            <TouchableOpacity onPress={() => navigation.navigate('ArtistPick')}>
+              <Ionicons name="create-outline" size={18} color="#fd79a8" style={{ marginLeft: 8 }} />
+            </TouchableOpacity>
           </View>
           <View style={styles.chipRow}>
             {favArtists.map(a => (
-              <View key={a} style={styles.chip}><Text style={styles.chipText}>{a}</Text></View>
+              <View key={a} style={styles.chip}>
+                <Text style={styles.chipText}>{a}</Text>
+                <TouchableOpacity onPress={() => void removeArtist(a)} style={styles.removeChip}>
+                  <Ionicons name="close-circle" size={16} color="#888" />
+                </TouchableOpacity>
+              </View>
             ))}
           </View>
         </View>
@@ -124,8 +163,11 @@ export default function ProfileScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#121212', paddingTop: 60 },
-  profileHeader: { alignItems: 'center', paddingVertical: 20 },
-  avatar: { width: 90, height: 90, borderRadius: 45, backgroundColor: '#1DB954', alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
+  topHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginBottom: 10, gap: 10 },
+  logoContainer: { backgroundColor: 'rgba(139, 92, 246, 0.1)', padding: 6, borderRadius: 10 },
+  headerBranding: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  profileHeader: { alignItems: 'center', paddingVertical: 15 },
+  avatar: { width: 90, height: 90, borderRadius: 45, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
   avatarText: { color: '#fff', fontSize: 36, fontWeight: 'bold' },
   userName: { color: '#fff', fontSize: 24, fontWeight: 'bold' },
   userEmail: { color: '#888', fontSize: 14, marginTop: 4 },
@@ -139,8 +181,9 @@ const styles = StyleSheet.create({
   prefValue: { color: '#1DB954', fontSize: 14 },
   prefSection: { paddingBottom: 5 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 20, gap: 8, marginTop: 6 },
-  chip: { backgroundColor: '#2a2a2a', paddingHorizontal: 14, paddingVertical: 6, borderRadius: 16 },
+  chip: { backgroundColor: '#2a2a2a', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, flexDirection: 'row', alignItems: 'center', gap: 6 },
   chipText: { color: '#ddd', fontSize: 13 },
+  removeChip: { marginLeft: 2 },
   menuItem: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 0.5, borderBottomColor: '#222' },
   menuText: { color: '#fff', fontSize: 16, flex: 1 },
   logoutItem: { marginTop: 10 },

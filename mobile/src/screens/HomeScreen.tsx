@@ -418,12 +418,15 @@ export default function HomeScreen({ navigation }: any) {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
-          <View style={styles.logoContainer}>
-            <Ionicons name="musical-notes" size={32} color="#8B5CF6" />
+          <View style={styles.logoRow}>
+            <View style={styles.logoContainer}>
+              <Ionicons name="musical-notes" size={24} color="#8B5CF6" />
+            </View>
+            <Text style={styles.brandTitle}>Tamil Music</Text>
           </View>
           <View>
             <Text style={styles.greeting}>Good {getGreeting()}</Text>
-            <Text style={styles.subtitle}>Tamil Music for You</Text>
+            <Text style={styles.subtitle}>Handpicked for you</Text>
           </View>
         </View>
         <TouchableOpacity style={styles.headerIconBtn} onPress={() => navigation.navigate('Profile')}>
@@ -496,12 +499,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
   },
   headerContent: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  logoRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 5 },
   logoContainer: {
-    marginRight: 4,
     backgroundColor: 'rgba(139, 92, 246, 0.15)',
     padding: 8,
     borderRadius: 12,
   },
+  brandTitle: { color: '#fff', fontSize: 20, fontWeight: 'bold', letterSpacing: 0.5 },
   greeting: { color: '#fff', fontSize: 22, fontWeight: 'bold' },
   subtitle: { color: '#b3b3b3', fontSize: 13, marginTop: 2 },
   headerIconBtn: { padding: 4 },
