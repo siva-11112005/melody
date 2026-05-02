@@ -13,6 +13,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@types/crypto-js": "^4.2.2",
     "axios": "^1.15.2",
     "bcrypt": "^6.0.0",

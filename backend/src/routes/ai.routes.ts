@@ -1,16 +1,57 @@
 import { Router } from 'express';
 import OpenAI from 'openai';
 import axios from 'axios';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { jiosaavnSearch } from './music.routes';
 
 const router = Router();
 
-const openai = new OpenAI({
-  baseURL: 'https://openrouter.ai/api/v1',
-  apiKey: process.env.OPENROUTER_API_KEY || 'dummy_key',
-});
+// Helper to get AI suggestions using either Direct Gemini or OpenRouter
+async function getAiSuggestions(prompt: string) {
+  // 1. Try Direct Gemini if key is present
+  const geminiKey = process.env.GEMINI_API_KEY;
+  if (geminiKey && geminiKey !== 'your_gemini_api_key_here') {
+    try {
+      const genAI = new GoogleGenerativeAI(geminiKey);
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const result = await model.generateContent(prompt);
+      return result.response.text();
+    } catch (err: any) {
+      console.error('Direct Gemini failed:', err?.message);
+    }
+  }
 
-const hasOpenRouterKey = !!process.env.OPENROUTER_API_KEY && process.env.OPENROUTER_API_KEY !== 'dummy_key';
+  // 2. Try OpenRouter as fallback
+  const openRouterKey = process.env.OPENROUTER_API_KEY;
+  if (openRouterKey && openRouterKey !== 'dummy_key' && !openRouterKey.includes('localhost')) {
+    try {
+      const openai = new OpenAI({
+        baseURL: 'https://openrouter.ai/api/v1',
+        apiKey: openRouterKey,
+        defaultHeaders: {
+          'HTTP-Referer': 'https://github.com/tamil-music-app',
+          'X-Title': 'Tamil Music App',
+        },
+      });
+
+      const completion = await openai.chat.completions.create({
+        model: 'google/gemini-1.5-flash',
+        messages: [{ role: 'user', content: prompt }],
+      });
+      return completion.choices[0]?.message?.content || '';
+    } catch (err: any) {
+      console.error('OpenRouter failed:', err?.message);
+    }
+  }
+
+  return '';
+}
+
+const hasAiConfigured = () => {
+  const geminiKey = process.env.GEMINI_API_KEY;
+  const openRouterKey = process.env.OPENROUTER_API_KEY;
+  return (geminiKey && geminiKey !== 'your_gemini_api_key_here') || (openRouterKey && openRouterKey !== 'dummy_key');
+};
 
 const normalizeText = (value: string) => (
   value
@@ -98,19 +139,12 @@ Suggest 8 songs that fit this mood. Include a mix of Bollywood and English songs
 Return ONLY a valid JSON object with a "songs" key containing an array of objects, each with "title" and "artist" properties.
 Example: {"songs": [{"title": "Shape of You", "artist": "Ed Sheeran"}]}`;
 
-    if (!hasOpenRouterKey) {
+    if (!hasAiConfigured()) {
       const fallback = await searchSongsHelper(`${mood} songs`, 8);
       return res.json(fallback || []);
     }
 
-    const completion = await openai.chat.completions.create({
-      model: 'google/gemini-1.5-flash',
-      messages: [
-        { role: 'user', content: prompt }
-      ],
-    });
-
-    const aiResponse = completion.choices[0]?.message?.content || '';
+    const aiResponse = await getAiSuggestions(prompt);
     let suggestions: any[] = [];
     
     try {
@@ -171,20 +205,14 @@ Return ONLY a valid JSON object with a "songs" key containing an array of object
 Focus on real Tamil songs that exist on streaming platforms.
 Example: {"songs": [{"title": "Nenjukkul Peidhidum", "artist": "Harris Jayaraj"}]}`;
 
-    if (!hasOpenRouterKey) {
+    if (!hasAiConfigured()) {
       const fallback = await searchSongsHelper(`${description} tamil songs`, 15);
       const tracks = (fallback || []).slice(0, 15).map((t: any) => mapToPlaylistTrack(t, description));
       return res.json({ tracks });
     }
 
-    const completion = await openai.chat.completions.create({
-      model: 'google/gemini-1.5-flash',
-      messages: [
-        { role: 'user', content: prompt }
-      ],
-    });
-
-    const aiResponse = completion.choices[0]?.message?.content || '';
+    const aiResponse = await getAiSuggestions(prompt);
+    console.log('AI Response received');
     let suggestions: any[] = [];
 
     try {
@@ -195,24 +223,26 @@ Example: {"songs": [{"title": "Nenjukkul Peidhidum", "artist": "Harris Jayaraj"}
         if (!Array.isArray(suggestions)) suggestions = [];
       }
     } catch (e) {
-      console.error('Failed to parse AI playlist response:', aiResponse);
+      console.error('Failed to parse AI playlist response');
+    }
+
+    // Fallback if AI fails
+    if (suggestions.length === 0) {
+      console.log('No AI suggestions found, using fallback search');
       const fallback = await searchSongsHelper(`${description} tamil songs`, 15);
       const tracks = (fallback || []).slice(0, 15).map((t: any) => mapToPlaylistTrack(t, description));
       return res.json({ tracks });
     }
 
-    if (suggestions.length === 0) {
-      const fallback = await searchSongsHelper(`${description} tamil songs`, 15);
-      const tracks = (fallback || []).slice(0, 15).map((t: any) => mapToPlaylistTrack(t, description));
-      return res.json({ tracks });
-    }
 
     const finalTracks: any[] = [];
 
     await Promise.all(suggestions.slice(0, 15).map(async (song: any) => {
       try {
         const query = `${song.title} ${song.artist || ''} tamil`;
+        console.log(`AI Searching for: ${query}`);
         const results = await searchSongsHelper(query, 1);
+        console.log(`Search for "${song.title}" returned ${results.length} results`);
 
         if (results.length > 0) {
           const track = results[0];
@@ -223,7 +253,10 @@ Example: {"songs": [{"title": "Nenjukkul Peidhidum", "artist": "Harris Jayaraj"}
       }
     }));
 
-    res.json({ tracks: finalTracks });
+    console.log(`Generated ${finalTracks.length} tracks for AI playlist`);
+    res.json({ tracks: finalTracks, suggestions });
+
+
   } catch (error: any) {
     console.error('AI Playlist generation error:', error?.message);
     res.status(500).json({ message: 'Error generating playlist' });
