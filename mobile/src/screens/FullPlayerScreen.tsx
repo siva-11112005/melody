@@ -356,6 +356,7 @@ export default function FullPlayerScreen({ navigation }: any) {
             )}
           </View>
         </View>
+      </Modal>
       {/* Queue Modal */}
       <Modal visible={showQueueModal} transparent animationType="slide" onRequestClose={() => setShowQueueModal(false)}>
         <View style={styles.modalOverlay}>
