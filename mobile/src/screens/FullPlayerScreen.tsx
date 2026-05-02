@@ -190,7 +190,7 @@ export default function FullPlayerScreen({ navigation }: any) {
           <Ionicons name="chevron-down" size={28} color="#fff" />
         </TouchableOpacity>
         <View style={styles.headerTitleContainer}>
-          <Image source={require('../assets/logo.png')} style={styles.headerLogo} />
+          <Image source={require('../../assets/logo.png')} style={styles.headerLogo} />
           <Text style={styles.headerTitle}>Now Playing</Text>
         </View>
         <TouchableOpacity style={styles.headerBtn} onPress={openPlaylistModal}>
