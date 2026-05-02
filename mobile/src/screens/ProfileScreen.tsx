@@ -110,7 +110,7 @@ export default function ProfileScreen() {
           <Ionicons name="language" size={20} color="#1DB954" />
           <Text style={styles.prefLabel}>Languages</Text>
           <Text style={styles.prefValue}>{languages.join(', ')}</Text>
-          <TouchableOpacity onPress={() => navigation.navigate('Language')}>
+          <TouchableOpacity onPress={() => navigation.navigate('LanguageSelect')}>
             <Ionicons name="create-outline" size={18} color="#1DB954" style={{ marginLeft: 8 }} />
           </TouchableOpacity>
         </View>
@@ -129,7 +129,7 @@ export default function ProfileScreen() {
               <View key={a} style={styles.chip}>
                 <Text style={styles.chipText}>{a}</Text>
                 <TouchableOpacity onPress={() => void removeArtist(a)} style={styles.removeChip}>
-                  <Ionicons name="close-circle" size={16} color="#888" />
+                  <Ionicons name="close-circle" size={16} color="#e74c3c" />
                 </TouchableOpacity>
               </View>
             ))}

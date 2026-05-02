@@ -120,6 +120,8 @@ function AppStack() {
         component={FullPlayerScreen}
         options={{ presentation: 'modal', animation: 'slide_from_bottom' }} 
       />
+      <Stack.Screen name="LanguageSelect" component={LanguageScreen} />
+      <Stack.Screen name="ArtistPick" component={ArtistPickScreen} />
     </Stack.Navigator>
   );
 }

@@ -18,6 +18,8 @@ interface PlayerState {
   pause: () => void;
   resume: () => void;
   seekTo: (positionMillis: number) => void;
+  removeFromQueue: (trackId: string) => void;
+  setQueue: (queue: any[]) => void;
   _seekRequested: number | null;
 }
 
@@ -108,5 +110,17 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   seekTo: (positionMillis: number) => {
     set({ _seekRequested: positionMillis });
+  },
+
+  removeFromQueue: (trackId: string) => {
+    const { queue, currentIndex, currentTrack } = get();
+    const newQueue = queue.filter(t => t.id !== trackId);
+    let newIndex = newQueue.findIndex(t => t.id === currentTrack?.id);
+    set({ queue: newQueue, currentIndex: newIndex });
+  },
+  setQueue: (newQueue: any[]) => {
+    const { currentTrack } = get();
+    let newIndex = newQueue.findIndex(t => t.id === currentTrack?.id);
+    set({ queue: newQueue, currentIndex: newIndex });
   },
 }));

@@ -20,7 +20,7 @@ export default function FullPlayerScreen({ navigation }: any) {
     currentTrack, isPlaying, pause, resume, 
     position, duration, setPosition,
     playNext, playPrevious, queue, currentIndex,
-    seekTo 
+    seekTo, removeFromQueue
   } = usePlayerStore();
   const [downloading, setDownloading] = useState(false);
   const [downloaded, setDownloaded] = useState(false);
@@ -31,6 +31,7 @@ export default function FullPlayerScreen({ navigation }: any) {
   const [seekValue, setSeekValue] = useState(0);
   
   const [showPlaylistModal, setShowPlaylistModal] = useState(false);
+  const [showQueueModal, setShowQueueModal] = useState(false);
   const [playlists, setPlaylists] = useState<any[]>([]);
   const [newPlaylistName, setNewPlaylistName] = useState('');
 
@@ -195,8 +196,8 @@ export default function FullPlayerScreen({ navigation }: any) {
           </View>
           <Text style={styles.headerTitle}>Now Playing</Text>
         </View>
-        <TouchableOpacity style={styles.headerBtn} onPress={openPlaylistModal}>
-          <Ionicons name="ellipsis-horizontal" size={24} color="#fff" />
+        <TouchableOpacity style={styles.headerBtn} onPress={() => setShowQueueModal(true)}>
+          <Ionicons name="list" size={24} color="#fff" />
         </TouchableOpacity>
       </View>
 
@@ -355,6 +356,45 @@ export default function FullPlayerScreen({ navigation }: any) {
             )}
           </View>
         </View>
+      {/* Queue Modal */}
+      <Modal visible={showQueueModal} transparent animationType="slide" onRequestClose={() => setShowQueueModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={() => setShowQueueModal(false)} style={styles.modalHeaderBtn}>
+                <Ionicons name="chevron-down" size={24} color="#fff" />
+                <Text style={styles.modalHeaderBtnText}>Close</Text>
+              </TouchableOpacity>
+              <Text style={styles.modalTitle}>Up Next</Text>
+              <TouchableOpacity onPress={() => setShowQueueModal(false)} style={styles.modalHeaderBtn}>
+                <Text style={styles.modalHeaderBtnText}>Done</Text>
+              </TouchableOpacity>
+            </View>
+
+            <FlatList
+              data={queue}
+              keyExtractor={(item, index) => `${item.id}-${index}`}
+              style={{ maxHeight: 400 }}
+              renderItem={({ item, index }) => (
+                <View style={[styles.queueItem, index === currentIndex && styles.activeQueueItem]}>
+                  <Image source={{ uri: item.artwork || item.image || 'https://placehold.co/50x50/282828/fff?text=♪' }} style={styles.queueImage} />
+                  <View style={styles.queueMeta}>
+                    <Text style={[styles.queueTitle, index === currentIndex && { color: '#1DB954' }]} numberOfLines={1}>{item.title || item.name}</Text>
+                    <Text style={styles.queueArtist} numberOfLines={1}>{item.artist}</Text>
+                  </View>
+                  {index !== currentIndex && (
+                    <TouchableOpacity onPress={() => removeFromQueue(item.id)} style={styles.removeQueueBtn}>
+                      <Ionicons name="remove-circle-outline" size={22} color="#e74c3c" />
+                    </TouchableOpacity>
+                  )}
+                  {index === currentIndex && (
+                    <Ionicons name="volume-medium" size={20} color="#1DB954" />
+                  )}
+                </View>
+              )}
+            />
+          </View>
+        </View>
       </Modal>
     </LinearGradient>
   );
@@ -441,4 +481,12 @@ const styles = StyleSheet.create({
   playlistName: { color: '#fff', fontSize: 15, fontWeight: '500' },
   playlistCount: { color: '#888', fontSize: 12, marginTop: 2 },
   noPlaylistText: { color: '#666', fontSize: 14, textAlign: 'center', paddingVertical: 30 },
+  // Queue styles
+  queueItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, gap: 12, borderBottomWidth: 0.5, borderBottomColor: '#222' },
+  activeQueueItem: { backgroundColor: 'rgba(29, 185, 84, 0.05)' },
+  queueImage: { width: 45, height: 45, borderRadius: 6 },
+  queueMeta: { flex: 1 },
+  queueTitle: { color: '#fff', fontSize: 14, fontWeight: '500' },
+  queueArtist: { color: '#888', fontSize: 12, marginTop: 2 },
+  removeQueueBtn: { padding: 5 },
 });
