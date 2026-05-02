@@ -300,7 +300,7 @@ export default function LibraryScreen() {
     { key: 'liked', label: 'Liked', icon: 'heart' },
   ];
 
-  const renderTrackItem = (track: any, playlistId?: string, contextTracks?: any[], type?: 'playlist' | 'liked' | 'download') => (
+  const renderTrackItem = (track: any, playlistId?: string, contextTracks?: any[], type?: 'liked' | 'download') => (
     <TouchableOpacity style={styles.trackItem} onPress={() => { void handlePlay(track, contextTracks); }} activeOpacity={0.6} key={track.id}>
       <Image source={{ uri: track.artwork || track.image || 'https://placehold.co/50x50/282828/fff?text=♪' }} style={styles.trackImage} />
       <View style={styles.trackInfo}>
@@ -365,13 +365,12 @@ export default function LibraryScreen() {
         </TouchableOpacity>
       </View>
 
-      {playlists.length === 0 ? renderEmpty('No playlists yet', 'musical-notes-outline') : (
+      {playlists.length === 0 ? renderEmpty('No playlists yet', 'list-outline') : (
         playlists.map((pl) => (
           <View key={pl._id}>
             <View style={styles.playlistRow}>
               <TouchableOpacity style={styles.playlistMain}
                 onPress={() => setExpandedPlaylist(expandedPlaylist === pl._id ? null : pl._id)}>
-                <View style={styles.playlistIcon}><Ionicons name="musical-notes" size={22} color="#1DB954" /></View>
                 <View style={styles.playlistMeta}>
                   <Text style={styles.playlistName}>{pl.name}</Text>
                   <Text style={styles.playlistCount}>{pl.tracks?.length || 0} songs</Text>
@@ -617,7 +616,6 @@ const styles = StyleSheet.create({
   createOptionText: { color: '#ccc', fontSize: 11, textAlign: 'center' },
   playlistRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 0.5, borderBottomColor: '#222' },
   playlistMain: { flex: 1, flexDirection: 'row', alignItems: 'center' },
-  playlistIcon: { width: 44, height: 44, borderRadius: 10, backgroundColor: '#2a2a2a', alignItems: 'center', justifyContent: 'center', marginRight: 15 },
   playlistMeta: { flex: 1 },
   playlistName: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
   playlistCount: { color: '#888', fontSize: 12, marginTop: 4 },

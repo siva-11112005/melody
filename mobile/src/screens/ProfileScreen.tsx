@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
@@ -50,12 +50,6 @@ export default function ProfileScreen() {
 
   const initial = user?.name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || '?';
   
-  const removeArtist = async (artist: string) => {
-    const updated = favArtists.filter(a => a !== artist);
-    setFavArtists(updated);
-    await AsyncStorage.setItem('favoriteArtists', JSON.stringify(updated));
-  };
-
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       <View style={styles.topHeader}>
@@ -75,11 +69,9 @@ export default function ProfileScreen() {
             { text: 'Cancel', style: 'cancel' },
             { text: 'Save', onPress: async (name) => {
               if (name) {
-                // Update local state if we had one, but we use useAuthStore
-                // For now just alert or update if possible
                 Alert.alert('Success', 'Name updated locally');
               }
-            }}
+            }},
           ], 'plain-text', user?.name);
         }}>
           <Text style={styles.userName}>{user?.name || 'Music Lover'}</Text>
@@ -107,7 +99,6 @@ export default function ProfileScreen() {
       <Text style={styles.sectionTitle}>Your Preferences</Text>
       {languages.length > 0 && (
         <View style={styles.prefRow}>
-          <Ionicons name="language" size={20} color="#1DB954" />
           <Text style={styles.prefLabel}>Languages</Text>
           <Text style={styles.prefValue}>{languages.join(', ')}</Text>
           <TouchableOpacity onPress={() => navigation.navigate('LanguageSelect')}>
@@ -118,7 +109,6 @@ export default function ProfileScreen() {
       {favArtists.length > 0 && (
         <View style={styles.prefSection}>
           <View style={styles.prefRow}>
-            <Ionicons name="heart" size={20} color="#fd79a8" />
             <Text style={styles.prefLabel}>Favorite Artists</Text>
             <TouchableOpacity onPress={() => navigation.navigate('ArtistPick')}>
               <Ionicons name="create-outline" size={18} color="#fd79a8" style={{ marginLeft: 8 }} />
@@ -128,9 +118,6 @@ export default function ProfileScreen() {
             {favArtists.map(a => (
               <View key={a} style={styles.chip}>
                 <Text style={styles.chipText}>{a}</Text>
-                <TouchableOpacity onPress={() => void removeArtist(a)} style={styles.removeChip}>
-                  <Ionicons name="close-circle" size={16} color="#e74c3c" />
-                </TouchableOpacity>
               </View>
             ))}
           </View>
@@ -181,9 +168,8 @@ const styles = StyleSheet.create({
   prefValue: { color: '#1DB954', fontSize: 14 },
   prefSection: { paddingBottom: 5 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 20, gap: 8, marginTop: 6 },
-  chip: { backgroundColor: '#2a2a2a', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  chip: { backgroundColor: '#2a2a2a', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 },
   chipText: { color: '#ddd', fontSize: 13 },
-  removeChip: { marginLeft: 2 },
   menuItem: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: 0.5, borderBottomColor: '#222' },
   menuText: { color: '#fff', fontSize: 16, flex: 1 },
   logoutItem: { marginTop: 10 },

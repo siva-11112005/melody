@@ -7,7 +7,6 @@ import { Ionicons } from '@expo/vector-icons';
 import axios from 'axios';
 import { useLibraryStore } from '../store/useLibraryStore';
 import { usePlayerStore } from '../store/usePlayerStore';
-import { useAuthStore } from '../store/useAuthStore';
 import { API_URL } from '../config/api';
 import { cleanSongTitle } from '../utils/textUtils';
 import { applyDownloadedUris } from '../services/downloadService';
@@ -27,7 +26,7 @@ const PRIMARY_SECTIONS = [
   { id: 'romantic', title: 'Romantic Tamil Songs', icon: 'heart', queries: ['romantic tamil love songs', 'tamil love melody', 'tamil kadhal songs'] },
   { id: 'mass', title: 'Mass / Energy Tamil Songs', icon: 'flash', queries: ['tamil mass kuthu dance songs', 'tamil mass entry songs', 'tamil kuthu party'] },
   { id: 'anirudh', title: 'Anirudh Hits', icon: 'headset', queries: ['anirudh ravichander tamil hits', 'anirudh latest songs', 'anirudh dance songs'] },
-  { id: 'arrahman', title: 'A.R. Rahman Hits', icon: 'musical-notes', queries: ['ar rahman tamil hits', 'ar rahman best songs', 'ar rahman oscar songs'] },
+  { id: 'arrahman', title: 'A.R. Rahman Hits', icon: 'headset', queries: ['ar rahman tamil hits', 'ar rahman best songs', 'ar rahman oscar songs'] },
   { id: 'chill', title: 'Chill Tamil Vibes', icon: 'cafe', queries: ['chill tamil melody songs', 'tamil soft melody', 'relaxing tamil songs'] },
   { id: 'sad', title: 'Sad Tamil Songs', icon: 'water', queries: ['sad tamil songs emotional', 'tamil sad melody songs', 'heartbreak tamil songs'] },
 ];
@@ -67,7 +66,6 @@ export default function HomeScreen({ navigation }: any) {
   const [dynamicSections, setDynamicSections] = useState<typeof PRIMARY_SECTIONS>([]);
   const { recentlyPlayed, addRecentlyPlayed, loadLibrary } = useLibraryStore();
   const { playTrack } = usePlayerStore();
-  const { logout } = useAuthStore();
 
   useEffect(() => {
     loadLibrary();

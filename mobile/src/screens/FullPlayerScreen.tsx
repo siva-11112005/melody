@@ -342,7 +342,6 @@ export default function FullPlayerScreen({ navigation }: any) {
                 style={{ maxHeight: 250 }}
                 renderItem={({ item }) => (
                   <TouchableOpacity style={styles.playlistItem} onPress={() => addToPlaylist(item._id)}>
-                    <Ionicons name="musical-notes" size={20} color="#1DB954" />
                     <View style={styles.playlistInfo}>
                       <Text style={styles.playlistName}>{item.name}</Text>
                       <Text style={styles.playlistCount}>{item.tracks?.length || 0} songs</Text>

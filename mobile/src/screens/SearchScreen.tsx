@@ -305,7 +305,7 @@ export default function SearchScreen() {
           contentContainerStyle={styles.list}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <Ionicons name="musical-notes-outline" size={60} color="#333" />
+              <Ionicons name="search-outline" size={60} color="#333" />
               <Text style={styles.emptyText}>No results found</Text>
             </View>
           }
@@ -376,7 +376,6 @@ export default function SearchScreen() {
                 style={{ maxHeight: 250 }}
                 renderItem={({ item }) => (
                   <TouchableOpacity style={styles.playlistItem} onPress={() => addToPlaylist(item._id)}>
-                    <Ionicons name="musical-notes" size={20} color="#1DB954" />
                     <View style={styles.playlistInfo}>
                       <Text style={styles.playlistName}>{item.name}</Text>
                       <Text style={styles.playlistCount}>{item.tracks?.length || 0} songs</Text>
