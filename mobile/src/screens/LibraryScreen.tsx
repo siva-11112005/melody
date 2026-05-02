@@ -411,6 +411,7 @@ export default function LibraryScreen() {
   );
 
   return (
+    <View style={styles.container}>
       <View style={styles.topBranding}>
         <View style={styles.logoContainer}>
           <Ionicons name="musical-notes" size={24} color="#8B5CF6" />
