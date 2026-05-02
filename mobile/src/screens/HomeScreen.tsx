@@ -93,11 +93,12 @@ export default function HomeScreen({ navigation }: any) {
     }
   }, [recentlyPlayed]);
 
-  // Load primary sections sequentially in batches of 2 to avoid overwhelming the backend
+  // Load primary sections sequentially with a small delay to avoid overwhelming backend
   const fetchPrimarySections = async () => {
-    for (let i = 0; i < PRIMARY_SECTIONS.length; i += 2) {
-      const batch = PRIMARY_SECTIONS.slice(i, i + 2);
-      await Promise.all(batch.map(section => fetchSectionInitial(section)));
+    for (let i = 0; i < PRIMARY_SECTIONS.length; i++) {
+      await fetchSectionInitial(PRIMARY_SECTIONS[i]);
+      // Small delay between sections for smoother UI
+      await new Promise(resolve => setTimeout(resolve, 100));
     }
   };
 
@@ -151,33 +152,30 @@ export default function HomeScreen({ navigation }: any) {
     
     let allTracks: any[] = [];
     const localSeen = new Set<string>();
-    let queryIndex = 0;
 
-    for (let qi = 0; qi < section.queries.length && allTracks.length < INITIAL_LOAD_SIZE; qi++) {
-      try {
-        const response = await axios.get(`${API_URL}/music/search`, {
-          params: { query: section.queries[qi], page: 1, limit: 30 },
-          timeout: 20000,
-        });
-        if (response.data?.data?.results) {
-          let newTracks = deduplicateTracks(response.data.data.results, localSeen);
-          newTracks = shuffleArray(newTracks);
-          allTracks = [...allTracks, ...newTracks];
-          queryIndex = qi;
-        }
-      } catch (error: any) {
-        console.error(`Section ${section.id} query ${qi} error:`, error?.message);
+    // Initial load: Only try the FIRST query for speed
+    try {
+      const response = await axios.get(`${API_URL}/music/search`, {
+        params: { query: section.queries[0], page: 1, limit: 15 },
+        timeout: 10000,
+      });
+      if (response.data?.data?.results) {
+        let newTracks = deduplicateTracks(response.data.data.results, localSeen);
+        newTracks = shuffleArray(newTracks);
+        allTracks = newTracks.slice(0, INITIAL_LOAD_SIZE);
       }
+    } catch (error: any) {
+      console.error(`Section ${section.id} initial fetch error:`, error?.message);
     }
 
     setSections(prev => ({
       ...prev,
       [section.id]: {
-        tracks: allTracks.slice(0, INITIAL_LOAD_SIZE),
+        tracks: allTracks,
         page: 1,
         loadingMore: false,
         hasMore: allTracks.length > 0,
-        queryIndex: queryIndex,
+        queryIndex: 0,
       }
     }));
     setInitialLoading(prev => ({ ...prev, [section.id]: false }));
@@ -419,10 +417,16 @@ export default function HomeScreen({ navigation }: any) {
     >
       {/* Header */}
       <View style={styles.header}>
-        <View>
-          <Text style={styles.greeting}>Good {getGreeting()}</Text>
-          <Text style={styles.subtitle}>Tamil Music for You</Text>
+        <View style={styles.headerContent}>
+          <Image source={require('../../assets/logo.png')} style={styles.logo} />
+          <View>
+            <Text style={styles.greeting}>Good {getGreeting()}</Text>
+            <Text style={styles.subtitle}>Tamil Music for You</Text>
+          </View>
         </View>
+        <TouchableOpacity style={styles.headerIconBtn} onPress={() => navigation.navigate('Profile')}>
+          <Ionicons name="person-circle-outline" size={32} color="#1DB954" />
+        </TouchableOpacity>
       </View>
 
       {/* All Sections */}
@@ -487,11 +491,13 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#121212' },
   header: {
     paddingTop: 60, paddingHorizontal: 20, paddingBottom: 10,
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start',
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
   },
-  greeting: { color: '#fff', fontSize: 28, fontWeight: 'bold' },
-  subtitle: { color: '#b3b3b3', fontSize: 15, marginTop: 4 },
-  logoutBtn: { marginTop: 8, padding: 5 },
+  headerContent: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  logo: { width: 40, height: 40, borderRadius: 8 },
+  greeting: { color: '#fff', fontSize: 22, fontWeight: 'bold' },
+  subtitle: { color: '#b3b3b3', fontSize: 13, marginTop: 2 },
+  headerIconBtn: { padding: 4 },
   sectionTitleContainer: {
     flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginBottom: 14, marginTop: 5,
   },

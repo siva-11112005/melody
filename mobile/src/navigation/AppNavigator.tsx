@@ -40,28 +40,42 @@ function MainTabs() {
         tabBarStyle: {
           backgroundColor: '#181818',
           borderTopColor: '#282828',
-          paddingBottom: 5,
-          height: 60,
+          paddingBottom: 8,
+          height: 65,
         },
         tabBarActiveTintColor: '#1DB954',
         tabBarInactiveTintColor: '#b3b3b3',
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '500', marginBottom: 2 },
       }}
     >
       <Tab.Screen name="Home" component={HomeScreen}
-        options={{ tabBarIcon: ({ color, size }) => <Ionicons name="home" size={size} color={color} /> }}
+        options={{ 
+          tabBarLabel: 'Home',
+          tabBarIcon: ({ color, size, focused }) => <Ionicons name={focused ? "home" : "home-outline"} size={size} color={color} /> 
+        }}
       />
       <Tab.Screen name="Search" component={SearchScreen}
-        options={{ tabBarIcon: ({ color, size }) => <Ionicons name="search" size={size} color={color} /> }}
+        options={{ 
+          tabBarLabel: 'Search',
+          tabBarIcon: ({ color, size, focused }) => <Ionicons name={focused ? "search" : "search-outline"} size={size} color={color} /> 
+        }}
       />
       <Tab.Screen name="Library" component={LibraryScreen}
-        options={{ tabBarIcon: ({ color, size }) => <Ionicons name="library" size={size} color={color} /> }}
+        options={{ 
+          tabBarLabel: 'Library',
+          tabBarIcon: ({ color, size, focused }) => <Ionicons name={focused ? "library" : "library-outline"} size={size} color={color} /> 
+        }}
       />
       <Tab.Screen name="Profile" component={ProfileScreen}
-        options={{ tabBarIcon: ({ color, size }) => <Ionicons name="person" size={size} color={color} /> }}
+        options={{ 
+          tabBarLabel: 'Profile',
+          tabBarIcon: ({ color, size, focused }) => <Ionicons name={focused ? "person" : "person-outline"} size={size} color={color} /> 
+        }}
       />
     </Tab.Navigator>
   );
 }
+
 
 function MainTabsWithPlayer() {
   const navigation = useNavigation<any>();

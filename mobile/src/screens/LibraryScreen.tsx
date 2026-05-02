@@ -307,22 +307,24 @@ export default function LibraryScreen() {
         <Text style={styles.trackTitle} numberOfLines={1}>{cleanSongTitle(track.title || track.name)}</Text>
         <Text style={styles.trackArtist} numberOfLines={1}>{cleanSongTitle(track.artist)}</Text>
       </View>
-      {playlistId && (
-        <TouchableOpacity onPress={() => removeFromPlaylist(playlistId, track.id)} style={styles.removeBtn}>
-          <Ionicons name="trash-outline" size={18} color="#e74c3c" />
-        </TouchableOpacity>
-      )}
-      {type === 'liked' && (
-        <TouchableOpacity onPress={() => removeLiked(track.id)} style={styles.removeBtn}>
-          <Ionicons name="heart-dislike-outline" size={18} color="#e74c3c" />
-        </TouchableOpacity>
-      )}
-      {type === 'download' && (
-        <TouchableOpacity onPress={() => removeDownloadItem(track.id)} style={styles.removeBtn}>
-          <Ionicons name="trash-outline" size={18} color="#e74c3c" />
-        </TouchableOpacity>
-      )}
-      <Ionicons name="play-circle" size={26} color="#1DB954" />
+      <View style={styles.trackActions}>
+        {playlistId && (
+          <TouchableOpacity onPress={() => removeFromPlaylist(playlistId, track.id)} style={styles.removeBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <Ionicons name="trash-outline" size={20} color="#e74c3c" />
+          </TouchableOpacity>
+        )}
+        {type === 'liked' && (
+          <TouchableOpacity onPress={() => removeLiked(track.id)} style={styles.removeBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <Ionicons name="heart-dislike-outline" size={20} color="#e74c3c" />
+          </TouchableOpacity>
+        )}
+        {type === 'download' && (
+          <TouchableOpacity onPress={() => removeDownloadItem(track.id)} style={styles.removeBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <Ionicons name="trash-outline" size={20} color="#e74c3c" />
+          </TouchableOpacity>
+        )}
+        <Ionicons name="play-circle" size={26} color="#1DB954" />
+      </View>
     </TouchableOpacity>
   );
 
@@ -443,16 +445,17 @@ export default function LibraryScreen() {
         <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <TouchableOpacity onPress={() => setShowCreateModal(false)} style={{ padding: 4 }}>
+              <TouchableOpacity onPress={() => setShowCreateModal(false)} style={styles.modalHeaderBtn}>
                 <Ionicons name="arrow-back" size={24} color="#fff" />
+                <Text style={styles.modalHeaderBtnText}>Back</Text>
               </TouchableOpacity>
-              <Text style={styles.modalTitle}>
+              <Text style={styles.modalTitle} numberOfLines={1}>
                 {targetPlaylistId
                   ? (createMode === 'search' ? 'Search & Add' : createMode === 'csv' ? 'Add by Names' : 'AI Add')
-                  : (createMode === 'manual' ? 'Create Playlist' : createMode === 'search' ? 'Search & Add Songs' : createMode === 'csv' ? 'Add by Song Names' : 'AI Playlist')}
+                  : (createMode === 'manual' ? 'Create Playlist' : createMode === 'search' ? 'Search & Add' : createMode === 'csv' ? 'Add by Song Names' : 'AI Playlist')}
               </Text>
-              <TouchableOpacity onPress={() => setShowCreateModal(false)} style={{ padding: 4 }}>
-                <Ionicons name="close" size={24} color="#fff" />
+              <TouchableOpacity onPress={() => setShowCreateModal(false)} style={styles.modalHeaderBtn}>
+                <Text style={styles.modalHeaderBtnText}>Cancel</Text>
               </TouchableOpacity>
             </View>
 
@@ -611,13 +614,16 @@ const styles = StyleSheet.create({
   trackInfo: { flex: 1, marginLeft: 14 },
   trackTitle: { color: '#fff', fontSize: 15, fontWeight: '500' },
   trackArtist: { color: '#b3b3b3', fontSize: 12, marginTop: 2 },
-  removeBtn: { padding: 6, marginRight: 6 },
+  trackActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  removeBtn: { padding: 8, justifyContent: 'center', alignItems: 'center' },
   emptyContainer: { alignItems: 'center', marginTop: 80 },
   emptyText: { color: '#555', fontSize: 16, marginTop: 12 },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: '#1e1e1e', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: '80%' },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, gap: 12 },
-  modalTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold', flex: 1 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' },
+  modalContent: { backgroundColor: '#1e1e1e', borderTopLeftRadius: 25, borderTopRightRadius: 25, padding: 20, maxHeight: '85%' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, gap: 12 },
+  modalHeaderBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4 },
+  modalHeaderBtnText: { color: '#1DB954', fontSize: 14, fontWeight: '600' },
+  modalTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold', flex: 1, textAlign: 'center' },
   modalInput: { backgroundColor: '#2a2a2a', borderRadius: 10, paddingHorizontal: 16, height: 48, color: '#fff', fontSize: 16, marginBottom: 12 },
   hintText: { color: '#888', fontSize: 13, marginBottom: 8 },
   greenBtn: { backgroundColor: '#1DB954', borderRadius: 25, paddingVertical: 14, alignItems: 'center', marginTop: 8 },

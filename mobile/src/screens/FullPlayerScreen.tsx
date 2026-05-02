@@ -189,11 +189,15 @@ export default function FullPlayerScreen({ navigation }: any) {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBtn}>
           <Ionicons name="chevron-down" size={28} color="#fff" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Now Playing</Text>
+        <View style={styles.headerTitleContainer}>
+          <Image source={require('../../assets/logo.png')} style={styles.headerLogo} />
+          <Text style={styles.headerTitle}>Now Playing</Text>
+        </View>
         <TouchableOpacity style={styles.headerBtn} onPress={openPlaylistModal}>
           <Ionicons name="ellipsis-horizontal" size={24} color="#fff" />
         </TouchableOpacity>
       </View>
+
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {/* Album Art */}
@@ -295,13 +299,17 @@ export default function FullPlayerScreen({ navigation }: any) {
       </ScrollView>
 
       {/* Add to Playlist Modal */}
-      <Modal visible={showPlaylistModal} transparent animationType="slide">
+      <Modal visible={showPlaylistModal} transparent animationType="slide" onRequestClose={() => setShowPlaylistModal(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={() => setShowPlaylistModal(false)} style={styles.modalHeaderBtn}>
+                <Ionicons name="chevron-down" size={24} color="#fff" />
+                <Text style={styles.modalHeaderBtnText}>Close</Text>
+              </TouchableOpacity>
               <Text style={styles.modalTitle}>Add to Playlist</Text>
-              <TouchableOpacity onPress={() => setShowPlaylistModal(false)}>
-                <Ionicons name="close" size={24} color="#fff" />
+              <TouchableOpacity onPress={() => setShowPlaylistModal(false)} style={styles.modalHeaderBtn}>
+                <Text style={styles.modalHeaderBtnText}>Cancel</Text>
               </TouchableOpacity>
             </View>
 
@@ -357,7 +365,9 @@ const styles = StyleSheet.create({
     paddingTop: 55, paddingHorizontal: 20, paddingBottom: 10,
   },
   headerBtn: { width: 40, alignItems: 'center' },
-  headerTitle: { color: '#ccc', fontSize: 14, fontWeight: '600', letterSpacing: 1 },
+  headerTitleContainer: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerLogo: { width: 24, height: 24, borderRadius: 4 },
+  headerTitle: { color: '#ccc', fontSize: 13, fontWeight: '600', letterSpacing: 1, textTransform: 'uppercase' },
   content: { alignItems: 'center', paddingHorizontal: 30, paddingBottom: 40 },
   artworkContainer: {
     width: width - 60, height: width - 60, borderRadius: 16,
@@ -397,14 +407,16 @@ const styles = StyleSheet.create({
   },
   queueText: { color: '#888', fontSize: 12 },
   // Modal styles
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' },
   modalContent: {
-    backgroundColor: '#1e1e1e', borderTopLeftRadius: 20, borderTopRightRadius: 20,
-    padding: 20, maxHeight: '60%',
+    backgroundColor: '#1e1e1e', borderTopLeftRadius: 25, borderTopRightRadius: 25,
+    padding: 20, maxHeight: '70%',
   },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  modalTitle: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
-  modalTrackName: { color: '#b3b3b3', fontSize: 13, marginBottom: 15 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, gap: 12 },
+  modalHeaderBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  modalHeaderBtnText: { color: '#1DB954', fontSize: 14, fontWeight: '600' },
+  modalTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold', flex: 1, textAlign: 'center' },
+  modalTrackName: { color: '#b3b3b3', fontSize: 13, marginBottom: 15, textAlign: 'center' },
   newPlaylistRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 15 },
   newPlaylistInput: {
     flex: 1, backgroundColor: '#2a2a2a', borderRadius: 10,

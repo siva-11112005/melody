@@ -332,9 +332,13 @@ export default function SearchScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={() => setShowPlaylistModal(false)} style={styles.modalHeaderBtn}>
+                <Ionicons name="arrow-back" size={24} color="#fff" />
+                <Text style={styles.modalHeaderBtnText}>Back</Text>
+              </TouchableOpacity>
               <Text style={styles.modalTitle}>Add to Playlist</Text>
-              <TouchableOpacity onPress={() => setShowPlaylistModal(false)}>
-                <Ionicons name="close" size={24} color="#fff" />
+              <TouchableOpacity onPress={() => setShowPlaylistModal(false)} style={styles.modalHeaderBtn}>
+                <Text style={styles.modalHeaderBtnText}>Cancel</Text>
               </TouchableOpacity>
             </View>
 
@@ -416,14 +420,16 @@ const styles = StyleSheet.create({
   emptyContainer: { alignItems: 'center', marginTop: 60 },
   emptyText: { color: '#555', fontSize: 16, marginTop: 12 },
   // Modal styles
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' },
   modalContent: {
-    backgroundColor: '#1e1e1e', borderTopLeftRadius: 20, borderTopRightRadius: 20,
-    padding: 20, maxHeight: '60%',
+    backgroundColor: '#1e1e1e', borderTopLeftRadius: 25, borderTopRightRadius: 25,
+    padding: 20, maxHeight: '80%',
   },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  modalTitle: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
-  modalTrackName: { color: '#b3b3b3', fontSize: 13, marginBottom: 15 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, gap: 12 },
+  modalHeaderBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  modalHeaderBtnText: { color: '#1DB954', fontSize: 14, fontWeight: '600' },
+  modalTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold', flex: 1, textAlign: 'center' },
+  modalTrackName: { color: '#b3b3b3', fontSize: 13, marginBottom: 15, textAlign: 'center' },
   newPlaylistRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 15 },
   newPlaylistInput: {
     flex: 1, backgroundColor: '#2a2a2a', borderRadius: 10,
