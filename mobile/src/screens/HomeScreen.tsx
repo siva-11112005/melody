@@ -53,24 +53,23 @@ interface SectionState {
   queryIndex: number;
 }
 
-const INITIAL_LOAD_SIZE = 10;
-const PAGE_SIZE = 5;
+const INITIAL_LOAD_SIZE = 16;
+const PAGE_SIZE = 8;
 
 export default function HomeScreen({ navigation }: any) {
   const [sections, setSections] = useState<Record<string, SectionState>>({});
   const [initialLoading, setInitialLoading] = useState<Record<string, boolean>>({});
   const [extraLoaded, setExtraLoaded] = useState(false);
   const [loadingExtra, setLoadingExtra] = useState(false);
-  const globalSeenRef = useRef<Set<string>>(new Set());
   const listLayoutRef = useRef<Record<string, { layoutWidth: number; contentWidth: number }>>({});
   const [dynamicSections, setDynamicSections] = useState<typeof PRIMARY_SECTIONS>([]);
+  const [refreshing, setRefreshing] = useState(false);
   const { recentlyPlayed, addRecentlyPlayed, loadLibrary } = useLibraryStore();
   const { playTrack } = usePlayerStore();
 
   useEffect(() => {
     loadLibrary();
-    globalSeenRef.current = new Set();
-    fetchPrimarySections();
+    void fetchPrimarySections();
   }, []);
 
   useEffect(() => {
@@ -98,6 +97,17 @@ export default function HomeScreen({ navigation }: any) {
       // Small delay between sections for smoother UI
       await new Promise(resolve => setTimeout(resolve, 100));
     }
+  };
+
+  const handleRefreshCategories = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    setSections({});
+    setInitialLoading({});
+    setExtraLoaded(false);
+    setLoadingExtra(false);
+    await fetchPrimarySections();
+    setRefreshing(false);
   };
 
   const loadExtraSections = useCallback(async () => {
@@ -135,11 +145,9 @@ export default function HomeScreen({ navigation }: any) {
       const songKey = getSongKey(track);
       if (!songKey || songKey.length < 3) continue;
       if (localSeen.has(songId) || localSeen.has(songKey)) continue;
-      if (globalSeenRef.current.has(songId)) continue;
 
       localSeen.add(songId);
       localSeen.add(songKey);
-      globalSeenRef.current.add(songId);
       tracks.push(track);
     }
     return tracks;
@@ -151,20 +159,23 @@ export default function HomeScreen({ navigation }: any) {
     let allTracks: any[] = [];
     const localSeen = new Set<string>();
 
-    // Initial load: Only try the FIRST query for speed
-    try {
-      const response = await axios.get(`${API_URL}/music/search`, {
-        params: { query: section.queries[0], page: 1, limit: 15 },
-        timeout: 10000,
-      });
-      if (response.data?.data?.results) {
-        let newTracks = deduplicateTracks(response.data.data.results, localSeen);
-        newTracks = shuffleArray(newTracks);
-        allTracks = newTracks.slice(0, INITIAL_LOAD_SIZE);
+    // Initial load: try multiple queries until we have enough songs
+    for (let queryIndex = 0; queryIndex < section.queries.length; queryIndex++) {
+      try {
+        const response = await axios.get(`${API_URL}/music/search`, {
+          params: { query: section.queries[queryIndex], page: 1, limit: 25 },
+          timeout: 12000,
+        });
+        const results = response.data?.data?.results || [];
+        if (results.length > 0) {
+          allTracks = [...allTracks, ...deduplicateTracks(results, localSeen)];
+          if (allTracks.length >= INITIAL_LOAD_SIZE) break;
+        }
+      } catch (error: any) {
+        console.error(`Section ${section.id} initial fetch error:`, error?.message);
       }
-    } catch (error: any) {
-      console.error(`Section ${section.id} initial fetch error:`, error?.message);
     }
+    allTracks = shuffleArray(allTracks).slice(0, INITIAL_LOAD_SIZE);
 
     setSections(prev => ({
       ...prev,
@@ -172,7 +183,7 @@ export default function HomeScreen({ navigation }: any) {
         tracks: allTracks,
         page: 1,
         loadingMore: false,
-        hasMore: allTracks.length > 0,
+        hasMore: allTracks.length >= Math.min(8, INITIAL_LOAD_SIZE),
         queryIndex: 0,
       }
     }));
@@ -212,7 +223,7 @@ export default function HomeScreen({ navigation }: any) {
         const pageToUse = attempt === 0 ? state.page + 1 : 1;
 
         const response = await axios.get(`${API_URL}/music/search`, {
-          params: { query, page: pageToUse, limit: 30 },
+          params: { query, page: pageToUse, limit: 40 },
           timeout: 20000,
         });
 
@@ -359,8 +370,8 @@ export default function HomeScreen({ navigation }: any) {
       onEndReachedThreshold={0.7}
       onLayout={(event) => handleListLayout(sectionId, event)}
       onContentSizeChange={(contentWidth, _contentHeight) => handleListContentSizeChange(sectionId, contentWidth)}
-      initialNumToRender={PAGE_SIZE}
-      maxToRenderPerBatch={PAGE_SIZE}
+      initialNumToRender={Math.max(6, PAGE_SIZE)}
+      maxToRenderPerBatch={Math.max(6, PAGE_SIZE)}
       windowSize={5}
       removeClippedSubviews
       ListFooterComponent={
@@ -378,6 +389,8 @@ export default function HomeScreen({ navigation }: any) {
     const state = sections[section.id];
     const isLoading = initialLoading[section.id];
 
+    if (!isLoading && (!state || state.tracks.length === 0)) return null;
+
     return (
       <View key={section.id} style={styles.section}>
         <View style={styles.sectionTitleContainer}>
@@ -393,9 +406,7 @@ export default function HomeScreen({ navigation }: any) {
           </View>
         ) : state && state.tracks.length > 0 ? (
           renderHorizontalTracks(section.id, state.tracks, state.loadingMore)
-        ) : (
-          !isLoading && <Text style={styles.emptyText}>No songs found</Text>
-        )}
+        ) : null}
       </View>
     );
   };
@@ -418,7 +429,7 @@ export default function HomeScreen({ navigation }: any) {
         <View style={styles.headerContent}>
           <View style={styles.logoRow}>
             <View style={styles.logoContainer}>
-              <Ionicons name="musical-notes" size={24} color="#8B5CF6" />
+              <Ionicons name="musical-notes" size={24} color="#1DB954" />
             </View>
             <Text style={styles.brandTitle}>Tamil Music</Text>
           </View>
@@ -431,6 +442,14 @@ export default function HomeScreen({ navigation }: any) {
           <Ionicons name="person-circle-outline" size={32} color="#1DB954" />
         </TouchableOpacity>
       </View>
+      <TouchableOpacity style={styles.refreshBtn} onPress={() => { void handleRefreshCategories(); }} disabled={refreshing}>
+        {refreshing ? (
+          <ActivityIndicator size="small" color="#1DB954" />
+        ) : (
+          <Ionicons name="refresh" size={16} color="#1DB954" />
+        )}
+        <Text style={styles.refreshText}>{refreshing ? 'Refreshing...' : 'Refresh Categories'}</Text>
+      </TouchableOpacity>
 
       {/* All Sections */}
       {allVisibleSections.map(section => renderSection(section))}
@@ -507,6 +526,21 @@ const styles = StyleSheet.create({
   greeting: { color: '#fff', fontSize: 22, fontWeight: 'bold' },
   subtitle: { color: '#b3b3b3', fontSize: 13, marginTop: 2 },
   headerIconBtn: { padding: 4 },
+  refreshBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginHorizontal: 20,
+    marginTop: 8,
+    marginBottom: 8,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(29, 185, 84, 0.4)',
+    backgroundColor: 'rgba(29, 185, 84, 0.08)',
+  },
+  refreshText: { color: '#1DB954', fontSize: 13, fontWeight: '600' },
   sectionTitleContainer: {
     flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginBottom: 14, marginTop: 5,
   },
@@ -527,7 +561,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20, paddingVertical: 15,
   },
   loaderText: { color: '#b3b3b3', fontSize: 13 },
-  emptyText: { color: '#555', fontSize: 13, paddingHorizontal: 20, paddingVertical: 10 },
   loadMoreIndicator: {
     width: 80, justifyContent: 'center', alignItems: 'center', gap: 6,
   },

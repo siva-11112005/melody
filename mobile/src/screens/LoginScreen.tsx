@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { 
-  View, Text, StyleSheet, TextInput, TouchableOpacity, 
+  View, Text, StyleSheet, TextInput, TouchableOpacity,
   ActivityIndicator, KeyboardAvoidingView, Platform, Alert 
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';

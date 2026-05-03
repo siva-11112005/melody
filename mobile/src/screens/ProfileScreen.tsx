@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
@@ -9,12 +9,14 @@ import { getDownloadedTracks } from '../services/downloadService';
 
 export default function ProfileScreen() {
   const navigation = useNavigation<any>();
-  const { user, logout } = useAuthStore();
+  const { user, token, logout, setAuth } = useAuthStore();
   const { recentlyPlayed } = useLibraryStore();
   const [likedCount, setLikedCount] = useState(0);
   const [downloadCount, setDownloadCount] = useState(0);
   const [languages, setLanguages] = useState<string[]>([]);
   const [favArtists, setFavArtists] = useState<string[]>([]);
+  const [showEditNameModal, setShowEditNameModal] = useState(false);
+  const [editingName, setEditingName] = useState('');
 
   useEffect(() => { loadStats(); }, []);
 
@@ -49,14 +51,40 @@ export default function ProfileScreen() {
   };
 
   const initial = user?.name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || '?';
+
+  const openEditNameModal = () => {
+    setEditingName(user?.name || '');
+    setShowEditNameModal(true);
+  };
+
+  const saveEditedName = async () => {
+    const nextName = editingName.trim();
+    if (!nextName) {
+      Alert.alert('Error', 'Name cannot be empty');
+      return;
+    }
+
+    try {
+      if (token && user) {
+        await setAuth(token, { ...user, name: nextName });
+      } else if (user) {
+        await AsyncStorage.setItem('user', JSON.stringify({ ...user, name: nextName }));
+      }
+      setShowEditNameModal(false);
+      Alert.alert('Success', 'Name updated');
+    } catch {
+      Alert.alert('Error', 'Could not update name');
+    }
+  };
   
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      <View style={styles.topHeader}>
+      {/* Branding Header */}
+      <View style={styles.topBranding}>
         <View style={styles.logoContainer}>
-          <Ionicons name="musical-notes" size={28} color="#8B5CF6" />
+          <Ionicons name="musical-notes" size={24} color="#1DB954" />
         </View>
-        <Text style={styles.headerBranding}>Tamil Music</Text>
+        <Text style={styles.brandTitle}>Tamil Music</Text>
       </View>
 
       {/* Profile Header */}
@@ -64,18 +92,7 @@ export default function ProfileScreen() {
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>{initial}</Text>
         </View>
-        <TouchableOpacity onPress={() => {
-          Alert.prompt('Edit Name', 'Enter your name', [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Save', onPress: async (name) => {
-              if (name) {
-                Alert.alert('Success', 'Name updated locally');
-              }
-            }},
-          ], 'plain-text', user?.name);
-        }}>
-          <Text style={styles.userName}>{user?.name || 'Music Lover'}</Text>
-        </TouchableOpacity>
+        <Text style={styles.userName}>{user?.name || 'Music Lover'}</Text>
         <Text style={styles.userEmail}>{user?.email || ''}</Text>
       </View>
 
@@ -136,6 +153,11 @@ export default function ProfileScreen() {
         <Text style={styles.menuText}>About</Text>
         <Ionicons name="chevron-forward" size={18} color="#555" />
       </TouchableOpacity>
+      <TouchableOpacity style={styles.menuItem} onPress={() => Alert.alert('Change Password', 'Password change UI can be connected to your backend auth endpoint.')}>
+        <Ionicons name="key-outline" size={22} color="#b3b3b3" />
+        <Text style={styles.menuText}>Change Password</Text>
+        <Ionicons name="chevron-forward" size={18} color="#555" />
+      </TouchableOpacity>
       <TouchableOpacity style={[styles.menuItem, styles.logoutItem]} onPress={handleLogout}>
         <Ionicons name="log-out-outline" size={22} color="#e74c3c" />
         <Text style={[styles.menuText, { color: '#e74c3c' }]}>Logout</Text>
@@ -144,19 +166,43 @@ export default function ProfileScreen() {
 
       <Text style={styles.version}>Tamil Music App v1.0.0</Text>
       <View style={{ height: 120 }} />
+
+      <Modal visible={showEditNameModal} transparent animationType="fade" onRequestClose={() => setShowEditNameModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Edit Name</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={editingName}
+              onChangeText={setEditingName}
+              placeholder="Enter your name"
+              placeholderTextColor="#777"
+              autoFocus
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.modalBtn} onPress={() => setShowEditNameModal(false)}>
+                <Text style={styles.modalBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalBtn, styles.modalBtnPrimary]} onPress={saveEditedName}>
+                <Text style={[styles.modalBtnText, styles.modalBtnPrimaryText]}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#121212', paddingTop: 60 },
-  topHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginBottom: 10, gap: 10 },
-  logoContainer: { backgroundColor: 'rgba(139, 92, 246, 0.1)', padding: 6, borderRadius: 10 },
-  headerBranding: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  container: { flex: 1, backgroundColor: '#121212', paddingTop: 10 },
+  topBranding: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginBottom: 20, gap: 10 },
+  logoContainer: { backgroundColor: 'rgba(29, 185, 84, 0.12)', padding: 6, borderRadius: 10 },
+  brandTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
   profileHeader: { alignItems: 'center', paddingVertical: 15 },
   avatar: { width: 90, height: 90, borderRadius: 45, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
   avatarText: { color: '#fff', fontSize: 36, fontWeight: 'bold' },
-  userName: { color: '#fff', fontSize: 24, fontWeight: 'bold' },
+  userName: { color: '#fff', fontSize: 24, fontWeight: 'bold', marginTop: 8 },
   userEmail: { color: '#888', fontSize: 14, marginTop: 4 },
   statsRow: { flexDirection: 'row', justifyContent: 'space-around', paddingHorizontal: 20, marginTop: 20, marginBottom: 10 },
   statCard: { alignItems: 'center', backgroundColor: '#1e1e1e', borderRadius: 14, paddingVertical: 16, paddingHorizontal: 24, minWidth: 90 },
@@ -174,4 +220,22 @@ const styles = StyleSheet.create({
   menuText: { color: '#fff', fontSize: 16, flex: 1 },
   logoutItem: { marginTop: 10 },
   version: { color: '#444', fontSize: 12, textAlign: 'center', marginTop: 30 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'center', paddingHorizontal: 24 },
+  modalCard: { backgroundColor: '#1f1f1f', borderRadius: 14, padding: 16, borderWidth: 1, borderColor: '#2f2f2f' },
+  modalTitle: { color: '#fff', fontSize: 18, fontWeight: '700', marginBottom: 12 },
+  modalInput: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#3a3a3a',
+    color: '#fff',
+    paddingHorizontal: 12,
+    height: 44,
+    marginBottom: 14,
+  },
+  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10 },
+  modalBtn: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 10, backgroundColor: '#2a2a2a' },
+  modalBtnPrimary: { backgroundColor: '#1DB954' },
+  modalBtnText: { color: '#ddd', fontSize: 14, fontWeight: '600' },
+  modalBtnPrimaryText: { color: '#fff' },
 });

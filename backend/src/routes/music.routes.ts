@@ -47,6 +47,7 @@ function buildSearchVariants(query: string) {
 
   if (!lower.includes('tamil')) {
     variants.push(`${cleaned} tamil songs`);
+    variants.push(`${cleaned} tamil`);
   }
 
   const yearMatch = lower.match(/\b(19|20)\d{2}\b/);
@@ -54,6 +55,9 @@ function buildSearchVariants(query: string) {
     const year = yearMatch[0];
     variants.push(`${year} tamil songs`, `${year} hits songs`, `${year} movie songs`);
   }
+
+  // Add a broader match variant for hard-to-find songs
+  variants.push(`${cleaned} full song`);
 
   return [...new Set(variants.map(v => v.trim()).filter(Boolean))];
 }
@@ -224,14 +228,14 @@ router.get('/search', async (req, res) => {
 
     let results: any[] = [];
 
-    const fetchResults = async (q: string) => {
+    const fetchResults = async (q: string, pageForQuery: number) => {
       let fetched: any[] = [];
 
       // Only try proxy if it's a real external URL (not localhost)
       if (hasProxy) {
         try {
           const response = await axios.get(`${JIOSAAVN_API_URL}/api/search/songs`, {
-            params: { query: q, limit: limitNum, page: pageNum },
+            params: { query: q, limit: limitNum, page: pageForQuery },
             timeout: 5000,
           });
           if (response.data?.data?.results?.length > 0) {
@@ -243,25 +247,29 @@ router.get('/search', async (req, res) => {
       }
 
       if (fetched.length === 0) {
-        fetched = await jiosaavnSearch(q, limitNum, pageNum);
+        fetched = await jiosaavnSearch(q, limitNum, pageForQuery);
       }
 
       return fetched;
     };
 
-    const variants = pageNum === 1 ? buildSearchVariants(queryText) : [queryText];
+    const variants = buildSearchVariants(queryText);
     const merged: any[] = [];
     const seen = new Set<string>();
 
     for (const q of variants) {
-      const fetched = await fetchResults(q);
-      fetched.forEach((item: any) => {
-        const key = getResultKey(item);
-        if (!seen.has(key)) {
-          seen.add(key);
-          merged.push(item);
-        }
-      });
+      for (const pageToTry of [pageNum, 1, 2]) {
+        const fetched = await fetchResults(q, pageToTry);
+        fetched.forEach((item: any) => {
+          const key = getResultKey(item);
+          if (!seen.has(key)) {
+            seen.add(key);
+            merged.push(item);
+          }
+        });
+        if (merged.length >= limitNum) break;
+        if (pageNum === pageToTry) break;
+      }
       if (merged.length >= limitNum) break;
     }
 

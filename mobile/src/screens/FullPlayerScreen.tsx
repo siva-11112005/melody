@@ -192,7 +192,7 @@ export default function FullPlayerScreen({ navigation }: any) {
         </TouchableOpacity>
         <View style={styles.headerTitleContainer}>
           <View style={styles.headerLogoContainer}>
-            <Ionicons name="musical-notes" size={24} color="#8B5CF6" />
+            <Ionicons name="musical-notes" size={24} color="#1DB954" />
           </View>
           <Text style={styles.headerTitle}>Now Playing</Text>
         </View>

@@ -2,6 +2,24 @@ import * as FileSystem from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Alert } from 'react-native';
 
+const normalizeHttpUrl = (value: unknown): string | null => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith('http://')) return `https://${trimmed.slice(7)}`;
+  if (trimmed.startsWith('https://')) return trimmed;
+  return null;
+};
+
+const deriveFromPreviewUrl = (value: unknown): string | null => {
+  const preview = normalizeHttpUrl(value);
+  if (!preview) return null;
+  return preview
+    .replace('/preview/', '/aac/')
+    .replace('_96_p.mp4', '_320.mp4')
+    .replace('_160_p.mp4', '_320.mp4');
+};
+
 const getBestAudioUrl = (track: any): string | null => {
   if (!track) return null;
   if (track.localUri) return track.localUri;
@@ -17,12 +35,16 @@ const getBestAudioUrl = (track: any): string | null => {
     if (typeof first === 'string' && first.length > 0) return first;
     if (first?.url && first.url.length > 0) return first.url;
   }
-  if (typeof track.downloadUrl === 'string' && track.downloadUrl.length > 0) return track.downloadUrl;
+  if (typeof track.downloadUrl === 'string' && track.downloadUrl.length > 0) return normalizeHttpUrl(track.downloadUrl);
   
   // Then try direct url fields
-  if (track.url && typeof track.url === 'string' && track.url.length > 0) return track.url;
-  if (track.audioUrl && typeof track.audioUrl === 'string') return track.audioUrl;
-  if (track.streamUrl && typeof track.streamUrl === 'string') return track.streamUrl;
+  const direct =
+    normalizeHttpUrl(track.url) ||
+    normalizeHttpUrl(track.audioUrl) ||
+    normalizeHttpUrl(track.streamUrl) ||
+    deriveFromPreviewUrl(track?.more_info?.media_preview_url) ||
+    deriveFromPreviewUrl(track?.media_preview_url);
+  if (direct) return direct;
   
   return null;
 };
@@ -47,16 +69,27 @@ export const downloadTrack = async (track: any) => {
       // Create a copy and reverse to get highest quality first
       const sorted = [...track.downloadUrl].reverse();
       sorted.forEach((item: any) => {
-        const u = typeof item === 'string' ? item : item?.url;
-        if (u && u.startsWith('http')) urlsToTry.push(u);
+        const u = typeof item === 'string' ? item : item?.url || item?.link;
+        const normalized = normalizeHttpUrl(u);
+        if (normalized) urlsToTry.push(normalized);
       });
     }
     
     // Add direct URL fields as fallbacks
-    const directUrl = track.url || track.audioUrl || track.streamUrl;
-    if (directUrl && directUrl.startsWith('http') && !urlsToTry.includes(directUrl)) {
-      urlsToTry.push(directUrl);
-    }
+    const fallbackCandidates = [
+      track.url,
+      track.audioUrl,
+      track.streamUrl,
+      track?.more_info?.media_preview_url,
+      track?.media_preview_url,
+    ];
+
+    fallbackCandidates.forEach((candidate) => {
+      const normalized = normalizeHttpUrl(candidate) || deriveFromPreviewUrl(candidate);
+      if (normalized && !urlsToTry.includes(normalized)) {
+        urlsToTry.push(normalized);
+      }
+    });
 
     if (urlsToTry.length === 0) {
       throw new Error('No valid download URLs found for this track');
@@ -64,18 +97,15 @@ export const downloadTrack = async (track: any) => {
 
     // 3. Prepare for download
     const safeTitle = (track.title || 'unknown').replace(/[^a-zA-Z0-9]/g, '_').substring(0, 50);
-    const fileUri = `${FileSystem.documentDirectory}${track.id || Date.now()}_${safeTitle}.m4a`;
 
     // 4. Try each URL until one works
     let lastError = null;
-    for (let audioUrl of urlsToTry) {
+    for (const audioUrl of urlsToTry) {
       try {
         console.log(`Attempting download for ${track.title} from: ${audioUrl}`);
-        
-        // Ensure HTTPS
-        if (audioUrl.startsWith('http://')) {
-          audioUrl = audioUrl.replace('http://', 'https://');
-        }
+
+        const ext = audioUrl.includes('.mp4') ? 'mp4' : (audioUrl.includes('.m4a') ? 'm4a' : 'mp4');
+        const fileUri = `${FileSystem.documentDirectory}${track.id || Date.now()}_${safeTitle}.${ext}`;
 
         const downloadResumable = FileSystem.createDownloadResumable(
           audioUrl,
@@ -92,8 +122,9 @@ export const downloadTrack = async (track: any) => {
         
         if (result && result.uri) {
           // Verify file exists and is not empty
-          const info = await FileSystem.getInfoAsync(result.uri);
-          if (info.exists && info.size > 1000) { // At least 1KB
+          const info = await FileSystem.getInfoAsync(result.uri, { size: true });
+          const statusOk = typeof result.status === 'number' ? result.status >= 200 && result.status < 300 : true;
+          if (statusOk && info.exists && info.size > 10000) { // At least ~10KB
             console.log(`Download successful: ${result.uri} (${info.size} bytes)`);
             
             // Save metadata
@@ -105,6 +136,11 @@ export const downloadTrack = async (track: any) => {
             }];
             await AsyncStorage.setItem('downloads', JSON.stringify(updated));
             return result.uri;
+          }
+
+          // remove bad/partial file
+          if (info.exists) {
+            await FileSystem.deleteAsync(result.uri, { idempotent: true });
           }
         }
       } catch (err: any) {

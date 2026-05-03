@@ -19,9 +19,16 @@ export const useAuthStore = create<AuthState>((set) => ({
   onboardingComplete: false,
 
   setAuth: async (token, user) => {
+    const preferredLanguages = await AsyncStorage.getItem('preferredLanguages');
+    const favoriteArtists = await AsyncStorage.getItem('favoriteArtists');
+    const hasOnboardingData = !!preferredLanguages && !!favoriteArtists;
+
     await AsyncStorage.setItem('token', token);
     await AsyncStorage.setItem('user', JSON.stringify(user));
-    set({ token, user });
+    if (hasOnboardingData) {
+      await AsyncStorage.setItem('onboardingComplete', 'true');
+    }
+    set({ token, user, onboardingComplete: hasOnboardingData });
   },
 
   logout: async () => {
@@ -43,11 +50,18 @@ export const useAuthStore = create<AuthState>((set) => ({
       const token = await withTimeout(AsyncStorage.getItem('token'), null);
       const userStr = await withTimeout(AsyncStorage.getItem('user'), null);
       const onboarding = await withTimeout(AsyncStorage.getItem('onboardingComplete'), null);
+      const preferredLanguages = await withTimeout(AsyncStorage.getItem('preferredLanguages'), null);
+      const favoriteArtists = await withTimeout(AsyncStorage.getItem('favoriteArtists'), null);
+      const hasOnboardingData = !!preferredLanguages && !!favoriteArtists;
 
       if (token && userStr) {
         try {
           const user = JSON.parse(userStr);
-          set({ token, user, isReady: true, onboardingComplete: onboarding === 'true' });
+          const isOnboardingDone = onboarding === 'true' || hasOnboardingData;
+          if (isOnboardingDone && onboarding !== 'true') {
+            await AsyncStorage.setItem('onboardingComplete', 'true');
+          }
+          set({ token, user, isReady: true, onboardingComplete: isOnboardingDone });
         } catch {
           // Corrupted JSON in storage — clear and proceed as logged out
           await AsyncStorage.multiRemove(['token', 'user', 'onboardingComplete']);

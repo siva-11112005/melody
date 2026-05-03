@@ -218,7 +218,7 @@ export default function SearchScreen() {
     <View style={styles.container}>
       <View style={styles.topBranding}>
         <View style={styles.logoContainer}>
-          <Ionicons name="musical-notes" size={24} color="#8B5CF6" />
+          <Ionicons name="musical-notes" size={24} color="#1DB954" />
         </View>
         <Text style={styles.brandTitle}>Tamil Music</Text>
       </View>

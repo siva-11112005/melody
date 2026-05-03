@@ -309,8 +309,8 @@ export default function LibraryScreen() {
       </View>
       <View style={styles.trackActions}>
         {playlistId && (
-          <TouchableOpacity onPress={() => removeFromPlaylist(playlistId, track.id)} style={styles.removeBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-            <Ionicons name="trash-outline" size={20} color="#e74c3c" />
+          <TouchableOpacity onPress={() => removeFromPlaylist(playlistId, track.id)} style={[styles.removeBtn, styles.removeBtnVisible]} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <Ionicons name="trash" size={18} color="#ff6b6b" />
           </TouchableOpacity>
         )}
         {type === 'liked' && (
@@ -377,8 +377,8 @@ export default function LibraryScreen() {
                 </View>
                 <Ionicons name={expandedPlaylist === pl._id ? "chevron-up" : "chevron-down"} size={20} color="#888" />
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => deletePlaylist(pl._id, pl.name)} style={styles.playlistDeleteBtn}>
-                <Ionicons name="trash-outline" size={18} color="#e74c3c" />
+              <TouchableOpacity onPress={() => deletePlaylist(pl._id, pl.name)} style={[styles.playlistDeleteBtn, styles.removeBtnVisible]}>
+                <Ionicons name="trash" size={18} color="#ff6b6b" />
               </TouchableOpacity>
             </View>
             {expandedPlaylist === pl._id && (
@@ -413,7 +413,7 @@ export default function LibraryScreen() {
     <View style={styles.container}>
       <View style={styles.topBranding}>
         <View style={styles.logoContainer}>
-          <Ionicons name="musical-notes" size={24} color="#8B5CF6" />
+          <Ionicons name="musical-notes" size={24} color="#1DB954" />
         </View>
         <Text style={styles.brandTitle}>Tamil Music</Text>
       </View>
@@ -629,6 +629,12 @@ const styles = StyleSheet.create({
   trackArtist: { color: '#b3b3b3', fontSize: 12, marginTop: 2 },
   trackActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   removeBtn: { padding: 8, justifyContent: 'center', alignItems: 'center' },
+  removeBtnVisible: {
+    backgroundColor: 'rgba(255, 107, 107, 0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 107, 107, 0.35)',
+    borderRadius: 14,
+  },
   emptyContainer: { alignItems: 'center', marginTop: 80 },
   emptyText: { color: '#555', fontSize: 16, marginTop: 12 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end' },
