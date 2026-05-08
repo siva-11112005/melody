@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  ActivityIndicator, Image, ScrollView, FlatList, LayoutChangeEvent
+  ActivityIndicator, Image, ScrollView, FlatList, LayoutChangeEvent,
+  RefreshControl
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import axios from 'axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLibraryStore } from '../store/useLibraryStore';
 import { usePlayerStore } from '../store/usePlayerStore';
 import { API_URL } from '../config/api';
@@ -53,8 +55,11 @@ interface SectionState {
   queryIndex: number;
 }
 
-const INITIAL_LOAD_SIZE = 16;
+const INITIAL_LOAD_SIZE = 12;
 const PAGE_SIZE = 8;
+const REMIX_NOISE_WORDS = /\b(remix|version|ver|live|karaoke|slowed|reverb|mashup|dj|mix|edit|cover)\b/gi;
+const HOME_CACHE_KEY = 'homeSectionsCacheV1';
+const HOME_CACHE_MAX_AGE_MS = 1000 * 60 * 20;
 
 export default function HomeScreen({ navigation }: any) {
   const [sections, setSections] = useState<Record<string, SectionState>>({});
@@ -65,12 +70,35 @@ export default function HomeScreen({ navigation }: any) {
   const [dynamicSections, setDynamicSections] = useState<typeof PRIMARY_SECTIONS>([]);
   const [refreshing, setRefreshing] = useState(false);
   const { recentlyPlayed, addRecentlyPlayed, loadLibrary } = useLibraryStore();
-  const { playTrack } = usePlayerStore();
+  const { playTrack, setQueue } = usePlayerStore();
 
   useEffect(() => {
+    void hydrateHomeFromCache();
     loadLibrary();
     void fetchPrimarySections();
   }, []);
+
+  const hydrateHomeFromCache = async () => {
+    try {
+      const raw = await AsyncStorage.getItem(HOME_CACHE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      const timestamp = Number(parsed?.timestamp || 0);
+      if (Date.now() - timestamp > HOME_CACHE_MAX_AGE_MS) return;
+      if (parsed?.sections && typeof parsed.sections === 'object') {
+        setSections(parsed.sections);
+        setInitialLoading({});
+      }
+    } catch {}
+  };
+
+  useEffect(() => {
+    if (Object.keys(sections).length === 0) return;
+    AsyncStorage.setItem(
+      HOME_CACHE_KEY,
+      JSON.stringify({ timestamp: Date.now(), sections })
+    ).catch(() => {});
+  }, [sections]);
 
   useEffect(() => {
     if (recentlyPlayed.length > 0 && dynamicSections.length === 0) {
@@ -90,13 +118,45 @@ export default function HomeScreen({ navigation }: any) {
     }
   }, [recentlyPlayed]);
 
-  // Load primary sections sequentially with a small delay to avoid overwhelming backend
+  // Load top sections first, then continue in background batches
   const fetchPrimarySections = async () => {
-    for (let i = 0; i < PRIMARY_SECTIONS.length; i++) {
-      await fetchSectionInitial(PRIMARY_SECTIONS[i]);
-      // Small delay between sections for smoother UI
-      await new Promise(resolve => setTimeout(resolve, 100));
+    const prioritySections = PRIMARY_SECTIONS.slice(0, 4);
+    const remainingSections = PRIMARY_SECTIONS.slice(4);
+
+    for (let i = 0; i < prioritySections.length; i += 2) {
+      const batch = prioritySections.slice(i, i + 2);
+      await Promise.all(batch.map((section) => fetchSectionInitial(section)));
     }
+
+    setTimeout(async () => {
+      for (let i = 0; i < remainingSections.length; i += 2) {
+        const batch = remainingSections.slice(i, i + 2);
+        await Promise.all(batch.map((section) => fetchSectionInitial(section)));
+      }
+    }, 300);
+  };
+
+  const normalizeArtist = (value: string) =>
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '');
+
+  const getArtistKey = (track: any) => {
+    const artist = track.artist || track.artists?.primary?.[0]?.name || track.primaryArtists || '';
+    return normalizeArtist(String(artist));
+  };
+
+  const dedupeForPlayerQueue = (tracks: any[]) => {
+    const seen = new Set<string>();
+    const output: any[] = [];
+    for (const track of tracks) {
+      const key = `${getSongKey(track)}:${getArtistKey(track)}`;
+      if (!key || key === ':') continue;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      output.push(track);
+    }
+    return output;
   };
 
   const handleRefreshCategories = async () => {
@@ -133,7 +193,9 @@ export default function HomeScreen({ navigation }: any) {
     const title = (track.name || track.title || '').toLowerCase().trim();
     const cleaned = title
       .replace(/\s*\(from\s+.*?\)\s*/gi, '')
+      .replace(/\s*\(.*?\)\s*/g, ' ')
       .replace(/\s*-\s*.*$/i, '')
+      .replace(REMIX_NOISE_WORDS, '')
       .replace(/[^a-z0-9]/g, '');
     return cleaned;
   };
@@ -160,10 +222,16 @@ export default function HomeScreen({ navigation }: any) {
     const localSeen = new Set<string>();
 
     // Initial load: try multiple queries until we have enough songs
-    for (let queryIndex = 0; queryIndex < section.queries.length; queryIndex++) {
+    const queryVariants = Array.from(new Set([
+      ...section.queries,
+      ...section.queries.map((q) => `${q} full song`),
+      ...section.queries.map((q) => `${q} jukebox`),
+    ]));
+
+    for (let queryIndex = 0; queryIndex < queryVariants.length; queryIndex++) {
       try {
         const response = await axios.get(`${API_URL}/music/search`, {
-          params: { query: section.queries[queryIndex], page: 1, limit: 25 },
+          params: { query: queryVariants[queryIndex], page: 1, limit: 40 },
           timeout: 12000,
         });
         const results = response.data?.data?.results || [];
@@ -327,11 +395,17 @@ export default function HomeScreen({ navigation }: any) {
   };
 
   const handlePlay = async (track: any, contextTracks: any[]) => {
-    const baseQueue = contextTracks.map(toPlayerTrack);
-    const queue = await applyDownloadedUris(baseQueue);
-    const mapped = queue.find(t => t.id === track.id) || toPlayerTrack(track);
-    playTrack(mapped, queue);
-    addRecentlyPlayed(mapped);
+    const dedupedContext = dedupeForPlayerQueue(contextTracks);
+    const baseQueue = dedupedContext.map(toPlayerTrack);
+    const immediateTrack = baseQueue.find(t => t.id === track.id) || toPlayerTrack(track);
+    playTrack(immediateTrack, baseQueue);
+    addRecentlyPlayed(immediateTrack);
+
+    applyDownloadedUris(baseQueue)
+      .then((resolvedQueue) => {
+        setQueue(resolvedQueue);
+      })
+      .catch(() => {});
   };
 
   const getHighQualityImage = (track: any) => {
@@ -370,9 +444,14 @@ export default function HomeScreen({ navigation }: any) {
       onEndReachedThreshold={0.7}
       onLayout={(event) => handleListLayout(sectionId, event)}
       onContentSizeChange={(contentWidth, _contentHeight) => handleListContentSizeChange(sectionId, contentWidth)}
-      initialNumToRender={Math.max(6, PAGE_SIZE)}
-      maxToRenderPerBatch={Math.max(6, PAGE_SIZE)}
-      windowSize={5}
+      initialNumToRender={6}
+      maxToRenderPerBatch={6}
+      windowSize={3}
+      getItemLayout={(_data, index) => ({
+        length: 150,
+        offset: 150 * index,
+        index,
+      })}
       removeClippedSubviews
       ListFooterComponent={
         loadingMore ? (
@@ -423,33 +502,40 @@ export default function HomeScreen({ navigation }: any) {
       showsVerticalScrollIndicator={false}
       onScroll={handleMainScroll}
       scrollEventThrottle={400}
+      refreshControl={(
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => { void handleRefreshCategories(); }}
+          tintColor="#1DB954"
+          colors={['#1DB954']}
+          progressBackgroundColor="#1a1a1a"
+        />
+      )}
     >
       {/* Header */}
       <View style={styles.header}>
-        <View style={styles.headerContent}>
+        <View style={styles.headerTopSection}>
           <View style={styles.logoRow}>
             <View style={styles.logoContainer}>
-              <Ionicons name="musical-notes" size={24} color="#1DB954" />
+              <Image 
+                source={require('../../assets/icon.png')} 
+                style={{ width: 32, height: 32, borderRadius: 6 }} 
+              />
             </View>
             <Text style={styles.brandTitle}>Tamil Music</Text>
           </View>
-          <View>
-            <Text style={styles.greeting}>Good {getGreeting()}</Text>
-            <Text style={styles.subtitle}>Handpicked for you</Text>
+          
+          <View style={styles.greetingRow}>
+            <View style={styles.greetingTextContainer}>
+              <Text style={styles.greeting}>Good {getGreeting()}</Text>
+              <Text style={styles.subtitle}>Handpicked for you</Text>
+            </View>
+            <TouchableOpacity style={styles.headerIconBtn} onPress={() => navigation.navigate('Profile')}>
+              <Ionicons name="person-circle-outline" size={36} color="#1DB954" />
+            </TouchableOpacity>
           </View>
         </View>
-        <TouchableOpacity style={styles.headerIconBtn} onPress={() => navigation.navigate('Profile')}>
-          <Ionicons name="person-circle-outline" size={32} color="#1DB954" />
-        </TouchableOpacity>
       </View>
-      <TouchableOpacity style={styles.refreshBtn} onPress={() => { void handleRefreshCategories(); }} disabled={refreshing}>
-        {refreshing ? (
-          <ActivityIndicator size="small" color="#1DB954" />
-        ) : (
-          <Ionicons name="refresh" size={16} color="#1DB954" />
-        )}
-        <Text style={styles.refreshText}>{refreshing ? 'Refreshing...' : 'Refresh Categories'}</Text>
-      </TouchableOpacity>
 
       {/* All Sections */}
       {allVisibleSections.map(section => renderSection(section))}
@@ -512,35 +598,38 @@ function getGreeting() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#121212' },
   header: {
-    paddingTop: 60, paddingHorizontal: 20, paddingBottom: 10,
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingTop: 60, paddingHorizontal: 20, paddingBottom: 15,
   },
-  headerContent: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  logoRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 5 },
+  headerTopSection: {
+    width: '100%',
+  },
+  logoRow: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 12, 
+    marginBottom: 15,
+  },
+  greetingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  greetingTextContainer: {
+    flex: 1,
+  },
   logoContainer: {
     backgroundColor: 'rgba(139, 92, 246, 0.15)',
     padding: 8,
     borderRadius: 12,
   },
   brandTitle: { color: '#fff', fontSize: 20, fontWeight: 'bold', letterSpacing: 0.5 },
-  greeting: { color: '#fff', fontSize: 22, fontWeight: 'bold' },
-  subtitle: { color: '#b3b3b3', fontSize: 13, marginTop: 2 },
-  headerIconBtn: { padding: 4 },
-  refreshBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginHorizontal: 20,
-    marginTop: 8,
-    marginBottom: 8,
-    paddingVertical: 10,
+  greeting: { color: '#fff', fontSize: 24, fontWeight: '800' },
+  subtitle: { color: '#b3b3b3', fontSize: 14, marginTop: 4 },
+  headerIconBtn: { 
+    padding: 2,
+    backgroundColor: 'rgba(255,255,255,0.05)',
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(29, 185, 84, 0.4)',
-    backgroundColor: 'rgba(29, 185, 84, 0.08)',
   },
-  refreshText: { color: '#1DB954', fontSize: 13, fontWeight: '600' },
   sectionTitleContainer: {
     flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginBottom: 14, marginTop: 5,
   },

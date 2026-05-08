@@ -15,6 +15,7 @@ import { API_URL } from '../config/api';
 import { cleanSongTitle } from '../utils/textUtils';
 
 type TabName = 'playlists' | 'recent' | 'downloads' | 'liked';
+const REMIX_NOISE_WORDS = /\b(remix|version|ver|live|karaoke|slowed|reverb|mashup|dj|mix|edit|cover)\b/gi;
 
 export default function LibraryScreen() {
   const [activeTab, setActiveTab] = useState<TabName>('playlists');
@@ -36,7 +37,7 @@ export default function LibraryScreen() {
   const [showResultsView, setShowResultsView] = useState(false);
   const [tempResults, setTempResults] = useState<any[]>([]);
   const { recentlyPlayed, loadLibrary } = useLibraryStore();
-  const { playTrack } = usePlayerStore();
+  const { playTrack, setQueue } = usePlayerStore();
   const createOptionWidth = (Dimensions.get('window').width - 60) / 4;
 
   useFocusEffect(
@@ -189,9 +190,10 @@ export default function LibraryScreen() {
       const resp = await axios.post(`${API_URL}/ai/resolve-songs`,
         { songNames: names }, { timeout: 60000 }
       );
-      if (resp.data?.tracks?.length > 0) {
-        setTempResults(resp.data.tracks);
-        setSelectedTracks(resp.data.tracks);
+      const resolved = await mergeAndDedupeTracks(resp.data?.tracks || [], names);
+      if (resolved.length > 0) {
+        setTempResults(resolved);
+        setSelectedTracks(resolved);
         setShowResultsView(true);
       } else {
         Alert.alert('No Results', 'Could not find any of those songs. Try different song names.');
@@ -215,9 +217,12 @@ export default function LibraryScreen() {
       const resp = await axios.post(`${API_URL}/ai/generate-playlist`,
         { description: aiPrompt }, { timeout: 60000 }
       );
-      if (resp.data?.tracks?.length > 0) {
-        setTempResults(resp.data.tracks);
-        setSelectedTracks(resp.data.tracks);
+      const seedTracks = Array.isArray(resp.data?.tracks) ? resp.data.tracks : [];
+      const seedNames = seedTracks.map((t: any) => String(t?.title || t?.name || '').trim()).filter(Boolean);
+      const resolved = await mergeAndDedupeTracks(seedTracks, seedNames);
+      if (resolved.length > 0) {
+        setTempResults(resolved);
+        setSelectedTracks(resolved);
         setShowResultsView(true);
       } else {
         Alert.alert('No Results', 'Could not generate playlist. Try a different description.');
@@ -240,6 +245,79 @@ export default function LibraryScreen() {
         } catch { Alert.alert('Error', 'Could not delete'); }
       }},
     ]);
+  };
+
+  const normalizeSongTitle = (value: string) => value
+    .toLowerCase()
+    .replace(/\s*\(from\s+.*?\)\s*/gi, ' ')
+    .replace(/\s*\(.*?\)\s*/g, ' ')
+    .replace(/\s*-\s*.*$/i, '')
+    .replace(REMIX_NOISE_WORDS, '')
+    .replace(/[^a-z0-9]/g, '');
+
+  const normalizeArtist = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+  const dedupeTrackList = (tracks: any[]) => {
+    const seen = new Set<string>();
+    const output: any[] = [];
+    for (const track of tracks) {
+      const title = cleanSongTitle(track.title || track.name || '');
+      const artist = cleanSongTitle(track.artist || track.primaryArtists || track.artists?.primary?.[0]?.name || '');
+      const key = `${normalizeSongTitle(title)}:${normalizeArtist(artist)}`;
+      if (!key || key === ':') continue;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      output.push({
+        ...track,
+        title,
+        artist,
+      });
+    }
+    return output;
+  };
+
+  const fetchTrackByName = async (name: string): Promise<any | null> => {
+    const variants = Array.from(new Set([name, `${name} tamil`, `${name} tamil full song`, `${name} jiosaavn`]));
+    for (const variant of variants) {
+      try {
+        const resp = await axios.get(`${API_URL}/music/search`, {
+          params: { query: variant, page: 1, limit: 20 },
+          timeout: 15000,
+        });
+        const list = resp.data?.data?.results || [];
+        if (list.length > 0) {
+          const best = list[0];
+          return {
+            id: best.id,
+            title: cleanSongTitle(best.name || best.title || ''),
+            artist: cleanSongTitle(best.artists?.primary?.[0]?.name || best.primaryArtists || best.artist || ''),
+            image: best.image?.[best.image.length - 1]?.url || best.image?.[0]?.url || '',
+            artwork: best.image?.[best.image.length - 1]?.url || best.image?.[0]?.url || '',
+            url: best.downloadUrl?.[best.downloadUrl.length - 1]?.url || best.downloadUrl?.[0]?.url || '',
+            duration: best.duration || 0,
+            downloadUrl: best.downloadUrl || [],
+          };
+        }
+      } catch {}
+    }
+    return null;
+  };
+
+  const mergeAndDedupeTracks = async (baseTracks: any[], candidateNames: string[]) => {
+    let merged = dedupeTrackList(baseTracks);
+    if (merged.length >= 12) return merged;
+
+    const needed = Math.min(candidateNames.length, 12) - merged.length;
+    if (needed <= 0) return merged;
+
+    const fallbacks: any[] = [];
+    for (const name of candidateNames.slice(0, 12)) {
+      const found = await fetchTrackByName(name);
+      if (found) fallbacks.push(found);
+      if (fallbacks.length >= needed) break;
+    }
+    merged = dedupeTrackList([...merged, ...fallbacks]);
+    return merged;
   };
 
   const removeFromPlaylist = async (playlistId: string, trackId: string) => {
@@ -288,9 +366,14 @@ export default function LibraryScreen() {
   const handlePlay = async (track: any, contextTracks?: any[]) => {
     const baseList = contextTracks && contextTracks.length > 0 ? contextTracks : [track];
     const baseQueue = baseList.map(toPlayerTrack);
-    const queue = await applyDownloadedUris(baseQueue);
-    const mapped = queue.find(t => t.id === track.id) || toPlayerTrack(track);
-    playTrack(mapped, queue);
+    const immediateTrack = baseQueue.find(t => t.id === track.id) || toPlayerTrack(track);
+    playTrack(immediateTrack, baseQueue);
+
+    applyDownloadedUris(baseQueue)
+      .then((resolvedQueue) => {
+        setQueue(resolvedQueue);
+      })
+      .catch(() => {});
   };
 
   const TABS: { key: TabName; label: string; icon: string }[] = [
@@ -412,10 +495,15 @@ export default function LibraryScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.topBranding}>
-        <View style={styles.logoContainer}>
-          <Ionicons name="musical-notes" size={24} color="#1DB954" />
+        <View style={styles.logoRow}>
+          <View style={styles.logoContainer}>
+            <Image 
+              source={require('../../assets/icon.png')} 
+              style={{ width: 32, height: 32, borderRadius: 6 }} 
+            />
+          </View>
+          <Text style={styles.brandTitle}>Tamil Music</Text>
         </View>
-        <Text style={styles.brandTitle}>Tamil Music</Text>
       </View>
       <Text style={styles.header}>Your Library</Text>
       <View style={styles.tabBar}>
@@ -601,9 +689,27 @@ export default function LibraryScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#121212' },
-  topBranding: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 20, paddingTop: 60, marginBottom: 5 },
-  logoContainer: { backgroundColor: 'rgba(139, 92, 246, 0.15)', padding: 8, borderRadius: 12 },
-  brandTitle: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
+  topBranding: { 
+    paddingHorizontal: 20, 
+    paddingTop: 60, 
+    marginBottom: 5,
+  },
+  logoRow: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 12,
+  },
+  logoContainer: { 
+    backgroundColor: 'rgba(139, 92, 246, 0.15)', 
+    padding: 8, 
+    borderRadius: 12 
+  },
+  brandTitle: { 
+    color: '#fff', 
+    fontSize: 20, 
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
+  },
   header: { color: '#fff', fontSize: 28, fontWeight: 'bold', paddingHorizontal: 20, marginBottom: 15 },
   tabBar: { flexDirection: 'row', paddingHorizontal: 15, marginBottom: 15, gap: 8 },
   tab: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, backgroundColor: '#2a2a2a' },

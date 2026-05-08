@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   View, Text, StyleSheet, TextInput, TouchableOpacity,
-  ActivityIndicator, KeyboardAvoidingView, Platform, Alert 
+  ActivityIndicator, KeyboardAvoidingView, Platform, Alert, Image 
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -40,10 +40,13 @@ export default function LoginScreen({ navigation }: any) {
       >
         {/* Logo */}
         <View style={styles.logoContainer}>
-          <LinearGradient colors={['#1DB954', '#1ed760']} style={styles.logoCircle}>
-            <Ionicons name="musical-notes" size={40} color="#fff" />
-          </LinearGradient>
-          <Text style={styles.appName}>Melodify</Text>
+          <View style={styles.logoCircle}>
+            <Image 
+              source={require('../../assets/icon.png')} 
+              style={{ width: 80, height: 80, borderRadius: 40 }} 
+            />
+          </View>
+          <Text style={styles.appName}>Tamil Music</Text>
           <Text style={styles.tagline}>Your Music, Your Mood</Text>
         </View>
 

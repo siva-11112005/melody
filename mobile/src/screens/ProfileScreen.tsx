@@ -6,6 +6,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useAuthStore } from '../store/useAuthStore';
 import { useLibraryStore } from '../store/useLibraryStore';
 import { getDownloadedTracks } from '../services/downloadService';
+import { usePlayerStore } from '../store/usePlayerStore';
 
 export default function ProfileScreen() {
   const navigation = useNavigation<any>();
@@ -17,6 +18,7 @@ export default function ProfileScreen() {
   const [favArtists, setFavArtists] = useState<string[]>([]);
   const [showEditNameModal, setShowEditNameModal] = useState(false);
   const [editingName, setEditingName] = useState('');
+  const { sleepTimerMinutes, setSleepTimer, clearSleepTimer, autoPlayNextEnabled, setAutoPlayNextEnabled } = usePlayerStore();
 
   useEffect(() => { loadStats(); }, []);
 
@@ -30,7 +32,40 @@ export default function ProfileScreen() {
       setLanguages(langs ? JSON.parse(langs) : []);
       const artists = await AsyncStorage.getItem('favoriteArtists');
       setFavArtists(artists ? JSON.parse(artists) : []);
+      const autoOff = await AsyncStorage.getItem('autoOffMinutes');
+      if (autoOff) {
+        const mins = parseInt(autoOff, 10);
+        if (!Number.isNaN(mins) && mins > 0) setSleepTimer(mins);
+      }
+      const autoNext = await AsyncStorage.getItem('autoPlayNextEnabled');
+      if (autoNext !== null) setAutoPlayNextEnabled(autoNext === 'true');
     } catch {}
+  };
+
+  const setAutoOffMinutes = async (minutes: number | null) => {
+    try {
+      if (!minutes) {
+        await AsyncStorage.removeItem('autoOffMinutes');
+        clearSleepTimer();
+        Alert.alert('Auto Off', 'Auto Off is turned off');
+        return;
+      }
+      await AsyncStorage.setItem('autoOffMinutes', String(minutes));
+      setSleepTimer(minutes);
+      Alert.alert('Auto Off', `Music will stop after ${minutes} minutes`);
+    } catch {
+      Alert.alert('Error', 'Could not update auto off setting');
+    }
+  };
+
+  const toggleAutoPlayNext = async () => {
+    try {
+      const nextValue = !autoPlayNextEnabled;
+      await AsyncStorage.setItem('autoPlayNextEnabled', String(nextValue));
+      setAutoPlayNextEnabled(nextValue);
+    } catch {
+      Alert.alert('Error', 'Could not update autoplay setting');
+    }
   };
 
   const handleLogout = () => {
@@ -146,6 +181,35 @@ export default function ProfileScreen() {
       <TouchableOpacity style={styles.menuItem} onPress={handleClearCache}>
         <Ionicons name="trash-outline" size={22} color="#b3b3b3" />
         <Text style={styles.menuText}>Clear Cache</Text>
+        <Ionicons name="chevron-forward" size={18} color="#555" />
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.menuItem} onPress={() => setAutoOffMinutes(15)}>
+        <Ionicons name="moon-outline" size={22} color="#b3b3b3" />
+        <Text style={styles.menuText}>Auto Off 15 min</Text>
+        <Ionicons name="chevron-forward" size={18} color="#555" />
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.menuItem} onPress={() => setAutoOffMinutes(30)}>
+        <Ionicons name="moon-outline" size={22} color="#b3b3b3" />
+        <Text style={styles.menuText}>Auto Off 30 min</Text>
+        <Ionicons name="chevron-forward" size={18} color="#555" />
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.menuItem} onPress={() => setAutoOffMinutes(60)}>
+        <Ionicons name="moon-outline" size={22} color="#b3b3b3" />
+        <Text style={styles.menuText}>Auto Off 60 min</Text>
+        <Ionicons name="chevron-forward" size={18} color="#555" />
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.menuItem} onPress={() => setAutoOffMinutes(null)}>
+        <Ionicons name="moon" size={22} color={sleepTimerMinutes ? "#1DB954" : "#b3b3b3"} />
+        <Text style={styles.menuText}>
+          {sleepTimerMinutes ? `Auto Off Active (${sleepTimerMinutes} min)` : 'Turn Off Auto Off'}
+        </Text>
+        <Ionicons name="chevron-forward" size={18} color="#555" />
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.menuItem} onPress={toggleAutoPlayNext}>
+        <Ionicons name={autoPlayNextEnabled ? "play-forward" : "play-forward-outline"} size={22} color={autoPlayNextEnabled ? "#1DB954" : "#b3b3b3"} />
+        <Text style={styles.menuText}>
+          {autoPlayNextEnabled ? 'Auto Play Next: On' : 'Auto Play Next: Off'}
+        </Text>
         <Ionicons name="chevron-forward" size={18} color="#555" />
       </TouchableOpacity>
       <TouchableOpacity style={styles.menuItem}>

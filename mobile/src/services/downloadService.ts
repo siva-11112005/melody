@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Alert } from 'react-native';
 
@@ -122,7 +122,7 @@ export const downloadTrack = async (track: any) => {
         
         if (result && result.uri) {
           // Verify file exists and is not empty
-          const info = await FileSystem.getInfoAsync(result.uri, { size: true });
+          const info = await FileSystem.getInfoAsync(result.uri);
           const statusOk = typeof result.status === 'number' ? result.status >= 200 && result.status < 300 : true;
           if (statusOk && info.exists && info.size > 10000) { // At least ~10KB
             console.log(`Download successful: ${result.uri} (${info.size} bytes)`);

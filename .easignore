@@ -1,0 +1,8 @@
+# Root-level EAS ignore to avoid locked local Android cache files
+mobile/android/.gradle/
+mobile/android/build/
+mobile/android/app/build/
+
+# Local artifacts
+downloads/
+*.log

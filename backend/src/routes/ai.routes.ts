@@ -62,6 +62,28 @@ const normalizeText = (value: string) => (
     .trim()
 );
 
+const normalizeSongTitle = (value: string) => (
+  normalizeText(value)
+    .replace(/\(from\s+.*?\)/g, ' ')
+    .replace(/\(.*?\)/g, ' ')
+    .replace(/\b(remix|version|ver|live|karaoke|slowed|reverb|mashup|dj|mix|edit|cover)\b/g, ' ')
+    .replace(/[^a-z0-9]/g, '')
+);
+
+const dedupePlaylistTracks = (tracks: any[]) => {
+  const seen = new Set<string>();
+  const output: any[] = [];
+  for (const track of tracks) {
+    const title = normalizeSongTitle(track?.title || track?.name || '');
+    const artist = normalizeText(track?.artist || track?.primaryArtists || track?.artists?.primary?.[0]?.name || '').replace(/[^a-z0-9]/g, '');
+    const key = `${title}:${artist}`;
+    if (!title || seen.has(key)) continue;
+    seen.add(key);
+    output.push(track);
+  }
+  return output;
+};
+
 const scoreMatch = (query: string, title: string, artist: string) => {
   const q = normalizeText(query);
   const t = normalizeText(title);
@@ -113,13 +135,28 @@ async function searchSongsHelper(query: string, limit: number = 10) {
   const JIOSAAVN_API_URL = process.env.JIOSAAVN_API_URL || '';
   const hasProxy = JIOSAAVN_API_URL && !JIOSAAVN_API_URL.includes('localhost') && !JIOSAAVN_API_URL.includes('127.0.0.1');
   
-  if (hasProxy) {
+  const q = query.trim();
+  const variants = Array.from(new Set([
+    q,
+    `${q} tamil`,
+    `${q} tamil full song`,
+    `${q} audio song`,
+  ]));
+
+  for (const variant of variants) {
+    if (hasProxy) {
+      try {
+        const res = await axios.get(`${JIOSAAVN_API_URL}/api/search/songs`, { params: { query: variant, limit }, timeout: 7000 });
+        if (res.data?.data?.results?.length > 0) return res.data.data.results;
+      } catch (err) {}
+    }
+
     try {
-      const res = await axios.get(`${JIOSAAVN_API_URL}/api/search/songs`, { params: { query, limit }, timeout: 5000 });
-      if (res.data?.data?.results?.length > 0) return res.data.data.results;
-    } catch (err) {}
+      const direct = await jiosaavnSearch(variant, limit);
+      if (direct.length > 0) return direct;
+    } catch {}
   }
-  return await jiosaavnSearch(query, limit);
+  return [];
 }
 
 // AI recommendations - no auth required for now
@@ -162,20 +199,22 @@ Example: {"songs": [{"title": "Shape of You", "artist": "Ed Sheeran"}]}`;
     }
 
     // Search each suggestion
-    const finalTracks: any[] = [];
+    let finalTracks: any[] = [];
 
-    await Promise.all(suggestions.slice(0, 8).map(async (song: any) => {
+    await Promise.all(suggestions.slice(0, 12).map(async (song: any) => {
       try {
         const query = `${song.title} ${song.artist}`;
-        const results = await searchSongsHelper(query, 1);
+        const results = await searchSongsHelper(query, 3);
         if (results.length > 0) {
-          finalTracks.push(results[0]);
+          const best = pickBestMatch(query, results) || results[0];
+          finalTracks.push(best);
         }
       } catch (err: any) {
         console.error(`Failed to fetch song ${song.title}:`, err?.message);
       }
     }));
 
+    finalTracks = dedupePlaylistTracks(finalTracks).slice(0, 10);
     res.json(finalTracks);
   } catch (error: any) {
     console.error('AI Recommendation error:', error?.message);
@@ -237,15 +276,15 @@ Example: {"songs": [{"title": "Nenjukkul Peidhidum", "artist": "Harris Jayaraj"}
 
     const finalTracks: any[] = [];
 
-    await Promise.all(suggestions.slice(0, 15).map(async (song: any) => {
+    await Promise.all(suggestions.slice(0, 20).map(async (song: any) => {
       try {
         const query = `${song.title} ${song.artist || ''} tamil`;
         console.log(`AI Searching for: ${query}`);
-        const results = await searchSongsHelper(query, 1);
+        const results = await searchSongsHelper(query, 5);
         console.log(`Search for "${song.title}" returned ${results.length} results`);
 
         if (results.length > 0) {
-          const track = results[0];
+          const track = pickBestMatch(query, results) || results[0];
           finalTracks.push(mapToPlaylistTrack(track, song.title));
         }
       } catch (err: any) {
@@ -253,8 +292,9 @@ Example: {"songs": [{"title": "Nenjukkul Peidhidum", "artist": "Harris Jayaraj"}
       }
     }));
 
-    console.log(`Generated ${finalTracks.length} tracks for AI playlist`);
-    res.json({ tracks: finalTracks, suggestions });
+    const cleanedTracks = dedupePlaylistTracks(finalTracks).slice(0, 15);
+    console.log(`Generated ${cleanedTracks.length} tracks for AI playlist`);
+    res.json({ tracks: cleanedTracks, suggestions });
 
 
   } catch (error: any) {
@@ -278,7 +318,7 @@ router.post('/resolve-songs', async (req, res) => {
       try {
         const trimmed = name.trim();
         if (!trimmed) return;
-        const results = await searchSongsHelper(trimmed, 5);
+        const results = await searchSongsHelper(trimmed, 8);
         if (results.length > 0) {
           const best = pickBestMatch(trimmed, results) || results[0];
           tracks.push(mapToPlaylistTrack(best, trimmed));
@@ -288,7 +328,7 @@ router.post('/resolve-songs', async (req, res) => {
       }
     }));
 
-    res.json({ tracks });
+    res.json({ tracks: dedupePlaylistTracks(tracks) });
   } catch (error: any) {
     console.error('Resolve songs error:', error?.message);
     res.status(500).json({ message: 'Error resolving songs' });

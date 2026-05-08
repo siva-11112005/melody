@@ -15,13 +15,14 @@ export default function Player({ onPress }: PlayerProps) {
     currentTrack, isPlaying, audioUrl, 
     pause, resume, setPosition, setDuration, 
     playNext, _seekRequested,
-    position, duration
+    position, duration, sleepTimerMinutes, clearSleepTimer, autoPlayNextEnabled
   } = usePlayerStore();
   const [liked, setLiked] = useState(false);
   const soundRef = useRef<Audio.Sound | null>(null);
   const currentUrlRef = useRef<string | null>(null);
   const loadingRef = useRef(false);
   const mountedRef = useRef(true);
+  const sleepTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Set audio mode once on mount
   useEffect(() => {
@@ -37,6 +38,10 @@ export default function Player({ onPress }: PlayerProps) {
       if (soundRef.current) {
         soundRef.current.unloadAsync().catch(() => {});
         soundRef.current = null;
+      }
+      if (sleepTimeoutRef.current) {
+        clearTimeout(sleepTimeoutRef.current);
+        sleepTimeoutRef.current = null;
       }
     };
   }, []);
@@ -82,7 +87,7 @@ export default function Player({ onPress }: PlayerProps) {
                 
                 const store = usePlayerStore.getState();
                 const hasNext = store.queue.length > 0 && store.currentIndex < store.queue.length - 1;
-                if (hasNext) {
+                if (hasNext && store.autoPlayNextEnabled) {
                   // Small delay to let the unload complete cleanly
                   setTimeout(() => {
                     if (mountedRef.current) {
@@ -119,7 +124,7 @@ export default function Player({ onPress }: PlayerProps) {
         currentUrlRef.current = null;
         const store = usePlayerStore.getState();
         const hasNext = store.queue.length > 0 && store.currentIndex < store.queue.length - 1;
-        if (hasNext) {
+        if (hasNext && store.autoPlayNextEnabled) {
           setTimeout(() => {
             if (mountedRef.current) store.playNext();
           }, 500);
@@ -130,7 +135,7 @@ export default function Player({ onPress }: PlayerProps) {
     };
 
     loadAndPlay();
-  }, [audioUrl]);
+  }, [audioUrl, autoPlayNextEnabled]);
 
   // Handle seek requests
   useEffect(() => {
@@ -149,6 +154,21 @@ export default function Player({ onPress }: PlayerProps) {
       soundRef.current.pauseAsync().catch(() => {});
     }
   }, [isPlaying]);
+
+  // Auto-off sleep timer
+  useEffect(() => {
+    if (sleepTimeoutRef.current) {
+      clearTimeout(sleepTimeoutRef.current);
+      sleepTimeoutRef.current = null;
+    }
+    if (!sleepTimerMinutes || sleepTimerMinutes <= 0 || !isPlaying) return;
+
+    sleepTimeoutRef.current = setTimeout(() => {
+      if (!mountedRef.current) return;
+      pause();
+      clearSleepTimer();
+    }, sleepTimerMinutes * 60 * 1000);
+  }, [sleepTimerMinutes, isPlaying, pause, clearSleepTimer]);
 
   const handlePlayPause = () => {
     if (isPlaying) pause();

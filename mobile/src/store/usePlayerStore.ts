@@ -20,6 +20,11 @@ interface PlayerState {
   seekTo: (positionMillis: number) => void;
   removeFromQueue: (trackId: string) => void;
   setQueue: (queue: any[]) => void;
+  sleepTimerMinutes: number | null;
+  setSleepTimer: (minutes: number | null) => void;
+  clearSleepTimer: () => void;
+  autoPlayNextEnabled: boolean;
+  setAutoPlayNextEnabled: (enabled: boolean) => void;
   _seekRequested: number | null;
 }
 
@@ -47,6 +52,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   duration: 0,
   queue: [],
   currentIndex: -1,
+  sleepTimerMinutes: null,
+  autoPlayNextEnabled: true,
   _seekRequested: null,
   setCurrentTrack: (track) => set({ currentTrack: track }),
   setIsPlaying: (isPlaying) => set({ isPlaying }),
@@ -123,4 +130,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     let newIndex = newQueue.findIndex(t => t.id === currentTrack?.id);
     set({ queue: newQueue, currentIndex: newIndex });
   },
+  setSleepTimer: (minutes) => set({ sleepTimerMinutes: minutes }),
+  clearSleepTimer: () => set({ sleepTimerMinutes: null }),
+  setAutoPlayNextEnabled: (enabled) => set({ autoPlayNextEnabled: enabled }),
 }));

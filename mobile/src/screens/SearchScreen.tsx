@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, TextInput, TouchableOpacity, 
   FlatList, ActivityIndicator, Image, Modal, Alert
@@ -13,6 +13,7 @@ import { cleanSongTitle, decodeHTMLEntities } from '../utils/textUtils';
 import { applyDownloadedUris } from '../services/downloadService';
 
 const DEFAULT_QUICK_SEARCHES = ['Anirudh', 'A.R. Rahman', 'Yuvan', 'Sid Sriram', 'Ilaiyaraaja', 'Hip Hop Tamizha'];
+const REMIX_NOISE_WORDS = /\b(remix|version|ver|live|karaoke|slowed|reverb|mashup|dj|mix|edit|cover)\b/gi;
 
 // Add tamil context to vague searches so JioSaavn returns Tamil results
 function enrichQuery(query: string): string {
@@ -27,6 +28,57 @@ function enrichQuery(query: string): string {
   return q;
 }
 
+function getSongKey(track: any): string {
+  const title = (track.name || track.title || '').toLowerCase().trim();
+  return title
+    .replace(/\s*\(from\s+.*?\)\s*/gi, '')
+    .replace(/\s*\(.*?\)\s*/g, ' ')
+    .replace(/\s*-\s*.*$/i, '')
+    .replace(REMIX_NOISE_WORDS, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+function getArtistKey(track: any): string {
+  const artist = String(track.artist || track.artists?.primary?.[0]?.name || track.primaryArtists || '');
+  return artist.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function dedupeTracks(tracks: any[]): any[] {
+  const seen = new Set<string>();
+  const output: any[] = [];
+  for (const track of tracks) {
+    const key = `${getSongKey(track)}:${getArtistKey(track)}`;
+    if (!key || key === ':') continue;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push(track);
+  }
+  return output;
+}
+
+function sanitizeQuery(value: string): string {
+  return value
+    .replace(/[^\p{L}\p{N}\s.'&-]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function mapSearchTrack(track: any) {
+  return {
+    id: track.id,
+    name: cleanSongTitle(track.name || track.title || ''),
+    title: cleanSongTitle(track.title || track.name || ''),
+    artists: track.artists || { primary: [{ name: cleanSongTitle(track.artist || track.primaryArtists || '') }] },
+    primaryArtists: cleanSongTitle(track.primaryArtists || track.artist || track.artists?.primary?.[0]?.name || ''),
+    image: track.image || [],
+    artwork: track.artwork || track.image?.[track.image?.length - 1]?.url || track.image?.[0]?.url || '',
+    downloadUrl: track.downloadUrl || [],
+    duration: track.duration || 0,
+    url: track.url || track.audioUrl || track.downloadUrl?.[track.downloadUrl?.length - 1]?.url || '',
+    localUri: track.localUri,
+  };
+}
+
 export default function SearchScreen() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<any[]>([]);
@@ -39,7 +91,7 @@ export default function SearchScreen() {
   const [playlists, setPlaylists] = useState<any[]>([]);
   const [newPlaylistName, setNewPlaylistName] = useState('');
   
-  const { playTrack } = usePlayerStore();
+  const { playTrack, setQueue } = usePlayerStore();
   const { addRecentSearch, addRecentlyPlayed, recentSearches } = useLibraryStore();
 
   // Fetch autocomplete suggestions as user types
@@ -81,7 +133,8 @@ export default function SearchScreen() {
   }, []);
 
   const handleSearch = async (searchQuery?: string) => {
-    const q = searchQuery || query;
+    const rawInput = searchQuery || query;
+    const q = sanitizeQuery(rawInput);
     if (!q.trim()) return;
     setLoading(true);
     setSearched(true);
@@ -89,17 +142,46 @@ export default function SearchScreen() {
     if (!searchQuery) setQuery(q);
     try {
       addRecentSearch(q);
-      // Enrich query with tamil context for vague searches
       const enriched = enrichQuery(q);
-      const response = await axios.get(`${API_URL}/music/search`, {
-        params: { query: enriched },
-        timeout: 15000,
-      });
-      if (response.data?.data?.results) {
-        setResults(response.data.data.results);
-      } else {
-        setResults([]);
+      const shortQuery = q.split(' ').slice(0, 4).join(' ');
+      const variants = Array.from(new Set([
+        enriched,
+        q,
+        `${q} tamil full song`,
+        `${q} audio song`,
+        `${q} jukebox`,
+        `${shortQuery} tamil`,
+      ]));
+
+      let merged: any[] = [];
+      for (const variant of variants) {
+        for (const page of [1, 2]) {
+          const response = await axios.get(`${API_URL}/music/search`, {
+            params: { query: variant, page, limit: 40 },
+            timeout: 18000,
+          });
+          const list = response.data?.data?.results || [];
+          if (list.length > 0) {
+            merged = dedupeTracks([...merged, ...list]);
+          }
+          if (merged.length >= 60) break;
+        }
+        if (merged.length >= 60) break;
       }
+
+      if (merged.length === 0) {
+        try {
+          const aiResolve = await axios.post(
+            `${API_URL}/ai/resolve-songs`,
+            { songNames: [q] },
+            { timeout: 30000 }
+          );
+          const aiTracks = Array.isArray(aiResolve.data?.tracks) ? aiResolve.data.tracks : [];
+          merged = dedupeTracks(aiTracks.map(mapSearchTrack));
+        } catch {}
+      }
+
+      setResults(merged.map(mapSearchTrack));
     } catch (error: any) {
       console.error('Search error:', error?.message);
       setResults([]);
@@ -136,11 +218,16 @@ export default function SearchScreen() {
   };
 
   const handlePlay = async (track: any) => {
-    const baseQueue = results.map(toPlayerTrack);
-    const queue = await applyDownloadedUris(baseQueue);
-    const mapped = queue.find(t => t.id === track.id) || toPlayerTrack(track);
-    playTrack(mapped, queue);
-    addRecentlyPlayed(mapped);
+    const baseQueue = dedupeTracks(results).map(toPlayerTrack);
+    const immediateTrack = baseQueue.find(t => t.id === track.id) || toPlayerTrack(track);
+    playTrack(immediateTrack, baseQueue);
+    addRecentlyPlayed(immediateTrack);
+
+    applyDownloadedUris(baseQueue)
+      .then((resolvedQueue) => {
+        setQueue(resolvedQueue);
+      })
+      .catch(() => {});
   };
 
   const openPlaylistModal = async (track: any) => {

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, Image } from 'react-native';
 import { useFonts } from 'expo-font';
 import { Ionicons } from '@expo/vector-icons';
 import AppNavigator from './src/navigation/AppNavigator';
@@ -28,7 +28,13 @@ export default function App() {
   if (!appReady) {
     return (
       <View style={styles.splash}>
-        <ActivityIndicator size="large" color="#1DB954" />
+        <View style={styles.logoContainer}>
+          <Image 
+            source={require('./assets/icon.png')} 
+            style={{ width: 100, height: 100, borderRadius: 20 }} 
+          />
+        </View>
+        <ActivityIndicator size="small" color="#1DB954" style={{ marginTop: 30 }} />
       </View>
     );
   }
@@ -45,6 +51,14 @@ const styles = StyleSheet.create({
   splash: {
     flex: 1,
     backgroundColor: '#121212',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoContainer: {
+    width: 140,
+    height: 140,
+    backgroundColor: 'rgba(29, 185, 84, 0.1)',
+    borderRadius: 70,
     alignItems: 'center',
     justifyContent: 'center',
   },

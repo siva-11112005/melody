@@ -5,6 +5,7 @@ import CryptoJS from 'crypto-js';
 
 const router = Router();
 const cache = new NodeCache({ stdTTL: 1800 }); // Cache for 30 minutes (shorter for variety)
+const SEARCH_DEBUG = process.env.SEARCH_DEBUG === 'true';
 
 function decodeHTMLEntities(text: string) {
   if (!text) return text;
@@ -24,14 +25,19 @@ const JIOSAAVN_API_URL = process.env.JIOSAAVN_API_URL || '';
 const hasProxy = JIOSAAVN_API_URL && !JIOSAAVN_API_URL.includes('localhost') && !JIOSAAVN_API_URL.includes('127.0.0.1');
 
 function normalizeQuery(value: string) {
-  return value.toLowerCase().trim().replace(/\s+/g, ' ');
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^\p{L}\p{N}\s.'&-]/gu, ' ')
+    .replace(/\s+/g, ' ');
 }
 
 function buildSearchVariants(query: string) {
   const cleaned = query.trim();
   if (!cleaned) return [];
   const lower = normalizeQuery(cleaned);
-  const variants = [cleaned];
+  const compact = cleaned.replace(/[^\p{L}\p{N}\s.'&-]/gu, ' ').replace(/\s+/g, ' ').trim();
+  const variants = [cleaned, compact];
 
   if (lower.includes('medoly')) {
     variants.push(cleaned.replace(/medoly/gi, 'melody'));
@@ -56,17 +62,63 @@ function buildSearchVariants(query: string) {
     variants.push(`${year} tamil songs`, `${year} hits songs`, `${year} movie songs`);
   }
 
-  // Add a broader match variant for hard-to-find songs
+  // Add broader variants for hard-to-find songs
   variants.push(`${cleaned} full song`);
+  variants.push(`${cleaned} jukebox`);
+  variants.push(`${cleaned} audio song`);
+  variants.push(`${cleaned} official`);
+
+  // Sometimes users paste long prompts; short query helps recall
+  const short = cleaned.split(' ').slice(0, 4).join(' ').trim();
+  if (short && short !== cleaned) {
+    variants.push(short, `${short} tamil`, `${short} songs`);
+  }
 
   return [...new Set(variants.map(v => v.trim()).filter(Boolean))];
 }
 
+function normalizeSongTitle(value: string) {
+  return normalizeQuery(value)
+    .replace(/\(from\s+.*?\)/g, ' ')
+    .replace(/\(.*?\)/g, ' ')
+    .replace(/\b(remix|version|ver|live|karaoke|slowed|reverb|mashup|dj|mix|edit|cover)\b/g, ' ')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+function getTokens(value: string) {
+  return normalizeQuery(value)
+    .split(' ')
+    .map((token) => token.trim())
+    .filter((token) => token.length > 2);
+}
+
+function scoreCandidate(query: string, item: any) {
+  const title = normalizeQuery(item?.name || item?.title || '');
+  const artist = normalizeQuery(item?.artists?.primary?.[0]?.name || item?.primaryArtists || item?.artist || '');
+  const album = normalizeQuery(item?.album || '');
+  const haystack = `${title} ${artist} ${album}`;
+  const qNorm = normalizeQuery(query);
+  const tokens = getTokens(qNorm);
+
+  let score = 0;
+  if (title.includes(qNorm)) score += 10;
+  if (album.includes(qNorm)) score += 8;
+  if (qNorm.includes(title) && title.length > 3) score += 4;
+  for (const token of tokens) {
+    if (title.includes(token)) score += 2;
+    if (album.includes(token)) score += 2;
+    if (artist.includes(token)) score += 1;
+    if (haystack.includes(token)) score += 1;
+  }
+  return score;
+}
+
 function getResultKey(item: any) {
-  if (item?.id) return String(item.id);
-  const title = (item?.name || item?.title || '').toLowerCase().trim();
-  const artist = (item?.artists?.primary?.[0]?.name || item?.primaryArtists || item?.artist || '').toLowerCase().trim();
-  return `${title}__${artist}`;
+  const title = normalizeSongTitle(item?.name || item?.title || '');
+  const artist = normalizeQuery(item?.artists?.primary?.[0]?.name || item?.primaryArtists || item?.artist || '').replace(/[^a-z0-9]/g, '');
+  const album = normalizeQuery(item?.album || '').replace(/[^a-z0-9]/g, '');
+  const idPart = item?.id ? String(item.id) : '';
+  return `${title}__${artist}__${album}__${idPart}`;
 }
 
 // Helper: call JioSaavn's actual API and parse response
@@ -87,7 +139,7 @@ export async function jiosaavnSearch(query: string, limit: number = 10, page: nu
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         'Accept': 'application/json',
       },
-      timeout: 10000,
+      timeout: 15000,
     });
 
     if (!response.data?.results) return [];
@@ -213,13 +265,14 @@ router.get('/suggest', async (req, res) => {
 // Search songs
 router.get('/search', async (req, res) => {
   try {
-    const { query, page, limit } = req.query;
+    const { query, page, limit, debug } = req.query;
     if (!query) {
       return res.status(400).json({ message: 'Query is required' });
     }
+    const requestDebug = SEARCH_DEBUG || debug === '1' || debug === 'true';
 
-    const pageNum = parseInt(page as string) || 1;
-    const limitNum = Math.min(parseInt(limit as string) || 30, 50);
+    const pageNum = Math.max(parseInt(page as string) || 1, 1);
+    const limitNum = Math.min(Math.max(parseInt(limit as string) || 30, 10), 100);
     const queryText = String(query);
     const cacheKey = `search_${queryText}_p${pageNum}_l${limitNum}`;
     if (cache.has(cacheKey)) {
@@ -228,18 +281,21 @@ router.get('/search', async (req, res) => {
 
     let results: any[] = [];
 
+    const trace: any[] = [];
     const fetchResults = async (q: string, pageForQuery: number) => {
       let fetched: any[] = [];
+      let source = 'none';
 
       // Only try proxy if it's a real external URL (not localhost)
       if (hasProxy) {
         try {
           const response = await axios.get(`${JIOSAAVN_API_URL}/api/search/songs`, {
             params: { query: q, limit: limitNum, page: pageForQuery },
-            timeout: 5000,
+            timeout: 8000,
           });
           if (response.data?.data?.results?.length > 0) {
             fetched = response.data.data.results;
+            source = 'proxy';
           }
         } catch {
           // Proxy failed, fall through to direct API
@@ -248,6 +304,11 @@ router.get('/search', async (req, res) => {
 
       if (fetched.length === 0) {
         fetched = await jiosaavnSearch(q, limitNum, pageForQuery);
+        if (fetched.length > 0) source = 'direct';
+      }
+
+      if (requestDebug) {
+        trace.push({ query: q, page: pageForQuery, source, count: fetched.length });
       }
 
       return fetched;
@@ -258,7 +319,8 @@ router.get('/search', async (req, res) => {
     const seen = new Set<string>();
 
     for (const q of variants) {
-      for (const pageToTry of [pageNum, 1, 2]) {
+      const pagesToTry = Array.from(new Set([pageNum, 1, 2, 3]));
+      for (const pageToTry of pagesToTry) {
         const fetched = await fetchResults(q, pageToTry);
         fetched.forEach((item: any) => {
           const key = getResultKey(item);
@@ -267,16 +329,65 @@ router.get('/search', async (req, res) => {
             merged.push(item);
           }
         });
-        if (merged.length >= limitNum) break;
-        if (pageNum === pageToTry) break;
+        if (merged.length >= limitNum + 30) break;
       }
-      if (merged.length >= limitNum) break;
+      if (merged.length >= limitNum + 30) break;
     }
 
-    results = merged.slice(0, limitNum);
+    // Last-resort fuzzy fallback for difficult song/movie name queries
+    if (merged.length < Math.max(5, Math.floor(limitNum / 2))) {
+      const queryTokens = getTokens(queryText);
+      const broadQueries = Array.from(new Set([
+        `${queryText} tamil`,
+        `${queryText} movie`,
+        `${queryTokens.slice(0, 2).join(' ')} tamil songs`.trim(),
+        `${queryTokens.slice(0, 1).join(' ')} tamil`.trim(),
+      ])).filter(Boolean);
 
-    const data = { data: { results } };
+      for (const broad of broadQueries) {
+        const fetched = await fetchResults(broad, 1);
+        const scored = fetched
+          .map((item: any) => ({ item, score: scoreCandidate(queryText, item) }))
+          .filter((entry) => entry.score > 0)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, limitNum);
+
+        for (const entry of scored) {
+          const key = getResultKey(entry.item);
+          if (!seen.has(key)) {
+            seen.add(key);
+            merged.push(entry.item);
+          }
+        }
+        if (merged.length >= limitNum + 30) break;
+      }
+    }
+
+    // Prefer exact title matches for top ranking
+    const qNorm = normalizeQuery(queryText);
+    results = merged
+      .sort((a, b) => {
+        const at = normalizeQuery(a?.name || a?.title || '');
+        const bt = normalizeQuery(b?.name || b?.title || '');
+        const aScore = (at.includes(qNorm) ? 2 : 0) + (qNorm.includes(at) ? 1 : 0) + scoreCandidate(queryText, a);
+        const bScore = (bt.includes(qNorm) ? 2 : 0) + (qNorm.includes(bt) ? 1 : 0) + scoreCandidate(queryText, b);
+        return bScore - aScore;
+      })
+      .slice(0, limitNum);
+
+    const data = requestDebug
+      ? { data: { results }, debug: { originalQuery: queryText, variants, trace, totalMerged: merged.length } }
+      : { data: { results } };
     cache.set(cacheKey, data);
+    if (requestDebug) {
+      console.log('[search-debug]', JSON.stringify({
+        query: queryText,
+        variantsTried: variants.length,
+        totalMerged: merged.length,
+        returned: results.length,
+        trace,
+      }));
+    }
     res.json(data);
   } catch (error: any) {
     console.error('Search error:', error?.message);
