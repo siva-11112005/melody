@@ -32,7 +32,29 @@ app.use('/api/ai', aiRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'ok', message: 'Backend is running' });
+  const dbState = mongoose.connection.readyState; // 1 = connected
+  res.status(dbState === 1 ? 200 : 503).json({
+    status: dbState === 1 ? 'ok' : 'degraded',
+    message: 'Backend is running',
+    dbConnected: dbState === 1,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+app.get('/ping', (req, res) => {
+  res.status(200).json({
+    ok: true,
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+  });
+});
+
+app.get('/api/ping', (req, res) => {
+  res.status(200).json({
+    ok: true,
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // Error handling middleware

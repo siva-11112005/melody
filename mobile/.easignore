@@ -1,9 +1,11 @@
-# Exclude local build caches and transient files from EAS upload
-android/.gradle/
-android/build/
-android/app/build/
-
-# Local/dev artifacts
-.expo/
 node_modules/
+node_modules
+.expo/
+.expo
+android/
+ios/
 *.log
+dist/
+dist
+web-build/
+web-build

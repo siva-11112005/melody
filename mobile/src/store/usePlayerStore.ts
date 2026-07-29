@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import TrackPlayer from 'react-native-track-player';
 
 interface PlayerState {
   currentTrack: any | null;
@@ -37,9 +38,16 @@ const resolveAudioUrl = (track: any): string | undefined => {
   if (track.localUri) return track.localUri;
   if (track.url) return track.url;
   if (Array.isArray(track.downloadUrl) && track.downloadUrl.length > 0) {
-    const best = track.downloadUrl[track.downloadUrl.length - 1];
-    if (typeof best === 'string') return best;
-    if (best?.url) return best.url;
+    const entries = track.downloadUrl
+      .map((entry: any) => (typeof entry === 'string' ? { quality: '', url: entry } : entry))
+      .filter((entry: any) => !!entry?.url);
+
+    const preferred = entries.find((entry: any) => String(entry.quality || '').includes('96'))
+      || entries.find((entry: any) => String(entry.quality || '').includes('160'))
+      || entries[entries.length - 1]
+      || entries[0];
+
+    if (preferred?.url) return preferred.url;
   }
   return undefined;
 };
@@ -108,10 +116,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
   
   pause: () => {
+    TrackPlayer.pause().catch(() => {});
     set({ isPlaying: false });
   },
   
   resume: () => {
+    TrackPlayer.play().catch(() => {});
     set({ isPlaying: true });
   },
 

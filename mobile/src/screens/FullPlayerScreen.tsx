@@ -7,8 +7,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
 import axios from 'axios';
+import TrackPlayer from 'react-native-track-player';
 import { usePlayerStore } from '../store/usePlayerStore';
-import { downloadTrack } from '../services/downloadService';
+import { downloadTrack, getDownloadedLocalUri } from '../services/downloadService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_URL } from '../config/api';
 import { cleanSongTitle, decodeHTMLEntities } from '../utils/textUtils';
@@ -39,9 +40,15 @@ export default function FullPlayerScreen({ navigation }: any) {
     if (!currentTrack) navigation.goBack();
     else {
       checkLiked();
-      setDownloaded(false);
+      checkDownloaded();
     }
   }, [currentTrack]);
+
+  const checkDownloaded = async () => {
+    if (!currentTrack?.id) return setDownloaded(false);
+    const localUri = await getDownloadedLocalUri(String(currentTrack.id));
+    setDownloaded(!!localUri);
+  };
 
   const checkLiked = async () => {
     if (!currentTrack) return;
@@ -97,6 +104,7 @@ export default function FullPlayerScreen({ navigation }: any) {
   const handleNext = () => {
     if (queue.length > 0 && currentIndex < queue.length - 1) {
       playNext();
+      TrackPlayer.skipToNext().catch(() => {});
     }
   };
 
@@ -104,8 +112,10 @@ export default function FullPlayerScreen({ navigation }: any) {
     // If more than 3 seconds in, restart the song instead of going back
     if (position > 3000 && seekTo) {
       seekTo(0);
+      TrackPlayer.seekTo(0).catch(() => {});
     } else {
       playPrevious();
+      TrackPlayer.skipToPrevious().catch(() => {});
     }
   };
 
@@ -252,7 +262,15 @@ export default function FullPlayerScreen({ navigation }: any) {
           </TouchableOpacity>
           <TouchableOpacity 
             style={styles.playButton}
-            onPress={isPlaying ? pause : resume}
+            onPress={() => {
+              if (isPlaying) {
+                pause();
+                TrackPlayer.pause().catch(() => {});
+              } else {
+                resume();
+                TrackPlayer.play().catch(() => {});
+              }
+            }}
             activeOpacity={0.8}
           >
             <Ionicons name={isPlaying ? "pause" : "play"} size={36} color="#000" />

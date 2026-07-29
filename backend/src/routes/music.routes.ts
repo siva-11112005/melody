@@ -23,6 +23,20 @@ const JIOSAAVN_BASE = 'https://www.jiosaavn.com/api.php';
 // Check if we have a real JioSaavn proxy configured (not localhost)
 const JIOSAAVN_API_URL = process.env.JIOSAAVN_API_URL || '';
 const hasProxy = JIOSAAVN_API_URL && !JIOSAAVN_API_URL.includes('localhost') && !JIOSAAVN_API_URL.includes('127.0.0.1');
+const REQUEST_TIMEOUT_MS = 12000;
+
+async function fetchWithRetry<T>(work: () => Promise<T>, attempts: number = 2): Promise<T> {
+  let lastErr: any;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await work();
+    } catch (err) {
+      lastErr = err;
+      await new Promise((resolve) => setTimeout(resolve, 200 * (i + 1)));
+    }
+  }
+  throw lastErr;
+}
 
 function normalizeQuery(value: string) {
   return value
@@ -121,10 +135,88 @@ function getResultKey(item: any) {
   return `${title}__${artist}__${album}__${idPart}`;
 }
 
+function normalizeMediaUrl(url: string) {
+  if (!url) return '';
+  return url.startsWith('http://') ? `https://${url.slice(7)}` : url;
+}
+
+function extractBestDownloadUrl(source: any) {
+  const candidates: string[] = [];
+
+  if (Array.isArray(source?.downloadUrl)) {
+    for (const entry of source.downloadUrl) {
+      if (typeof entry === 'string') {
+        candidates.push(entry);
+      } else if (entry && typeof entry.url === 'string') {
+        candidates.push(entry.url);
+      } else if (entry && typeof entry.link === 'string') {
+        candidates.push(entry.link);
+      }
+    }
+  } else if (typeof source?.downloadUrl === 'string') {
+    candidates.push(source.downloadUrl);
+  }
+
+  if (typeof source?.url === 'string') candidates.push(source.url);
+  if (typeof source?.audioUrl === 'string') candidates.push(source.audioUrl);
+
+  const normalized = candidates.map(normalizeMediaUrl).filter(Boolean);
+  const preferred = normalized.find((url) => /(_320\.mp4|320kbps|\.flac|\.m4a|\.mp3)(\?|$)/i.test(url));
+  return preferred || normalized[normalized.length - 1] || '';
+}
+
+function normalizeTrackRecord(source: any, fallbackTitle?: string) {
+  const title = decodeHTMLEntities(String(source?.name || source?.title || source?.song || fallbackTitle || 'Unknown'));
+  const artist = decodeHTMLEntities(
+    String(
+      source?.artists?.primary?.[0]?.name ||
+      source?.primaryArtists ||
+      source?.artist ||
+      source?.singers ||
+      'Unknown',
+    ),
+  );
+  const artwork =
+    source?.artwork ||
+    (Array.isArray(source?.image)
+      ? source.image[source.image.length - 1]?.url || source.image[0]?.url || ''
+      : source?.image || '');
+  const downloadUrl = extractBestDownloadUrl(source);
+  const downloadUrls = Array.isArray(source?.downloadUrl)
+    ? source.downloadUrl
+    : downloadUrl
+      ? [{ quality: 'best', url: downloadUrl }]
+      : [];
+
+  return {
+    ...source,
+    id: source?.id,
+    name: title,
+    title,
+    song: title,
+    artist,
+    primaryArtists: artist,
+    artwork,
+    image: Array.isArray(source?.image)
+      ? source.image
+      : artwork
+        ? [
+            { quality: '500x500', url: artwork },
+            { quality: '150x150', url: artwork },
+            { quality: '50x50', url: artwork },
+          ]
+        : [],
+    url: downloadUrl,
+    streamUrl: downloadUrl,
+    audioUrl: downloadUrl,
+    downloadUrl: downloadUrls,
+  };
+}
+
 // Helper: call JioSaavn's actual API and parse response
 export async function jiosaavnSearch(query: string, limit: number = 10, page: number = 1) {
   try {
-    const response = await axios.get(JIOSAAVN_BASE, {
+    const response = await fetchWithRetry(() => axios.get(JIOSAAVN_BASE, {
       params: {
         __call: 'search.getResults',
         _format: 'json',
@@ -139,15 +231,15 @@ export async function jiosaavnSearch(query: string, limit: number = 10, page: nu
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         'Accept': 'application/json',
       },
-      timeout: 15000,
-    });
+      timeout: REQUEST_TIMEOUT_MS,
+    }), 2);
 
     if (!response.data?.results) return [];
 
-    // Map to clean format
-    return response.data.results.map((song: any) => ({
+    // Map to clean format and attach the best playback URL for every client.
+    return response.data.results.map((song: any) => normalizeTrackRecord({
       id: song.id,
-      name: decodeHTMLEntities(song.title || song.song || 'Unknown'),
+      name: song.title || song.song || 'Unknown',
       duration: parseInt(song.more_info?.duration || song.duration || '0'),
       artists: {
         primary: song.more_info?.artistMap?.primary_artists?.map((a: any) => ({
@@ -289,12 +381,12 @@ router.get('/search', async (req, res) => {
       // Only try proxy if it's a real external URL (not localhost)
       if (hasProxy) {
         try {
-          const response = await axios.get(`${JIOSAAVN_API_URL}/api/search/songs`, {
+          const response = await fetchWithRetry(() => axios.get(`${JIOSAAVN_API_URL}/api/search/songs`, {
             params: { query: q, limit: limitNum, page: pageForQuery },
             timeout: 8000,
-          });
+          }), 2);
           if (response.data?.data?.results?.length > 0) {
-            fetched = response.data.data.results;
+            fetched = response.data.data.results.map((item: any) => normalizeTrackRecord(item));
             source = 'proxy';
           }
         } catch {
@@ -366,6 +458,7 @@ router.get('/search', async (req, res) => {
     // Prefer exact title matches for top ranking
     const qNorm = normalizeQuery(queryText);
     results = merged
+      .map((item) => normalizeTrackRecord(item))
       .sort((a, b) => {
         const at = normalizeQuery(a?.name || a?.title || '');
         const bt = normalizeQuery(b?.name || b?.title || '');
@@ -410,18 +503,21 @@ router.get('/trending', async (req, res) => {
       if (langs.length === 0) langs = ['hindi'];
     }
 
-    const queries = langs.map(lang => `latest ${lang} songs`).concat(langs.map(lang => `top ${lang} hits`));
+    const queries = langs
+      .map(lang => `latest ${lang} songs`)
+      .concat(langs.map(lang => `top ${lang} hits`))
+      .concat(langs.map(lang => `${lang} movie songs`));
     const allTracks: any[] = [];
 
     // Only try proxy if it's a real external URL
     if (hasProxy) {
       try {
         const testResp = await axios.get(`${JIOSAAVN_API_URL}/api/search/songs`, {
-          params: { query: queries[0], limit: 6 },
+          params: { query: queries[0], limit: 12, page: 1 },
           timeout: 3000,
         });
         if (testResp.data?.data?.results) {
-          allTracks.push(...testResp.data.data.results);
+          allTracks.push(...testResp.data.data.results.map((item: any) => normalizeTrackRecord(item)));
         }
       } catch {}
     }
@@ -429,7 +525,11 @@ router.get('/trending', async (req, res) => {
     // Fetch remaining queries using direct API
     await Promise.all(queries.slice(hasProxy && allTracks.length > 0 ? 1 : 0).map(async (q) => {
       try {
-        const results = await jiosaavnSearch(q, 6);
+        const [page1, page2] = await Promise.all([
+          jiosaavnSearch(q, 10, 1),
+          jiosaavnSearch(q, 10, 2),
+        ]);
+        const results = [...page1, ...page2];
         allTracks.push(...results);
       } catch (err: any) {
         console.error(`Trending fetch error for "${q}":`, err?.message);
@@ -439,6 +539,10 @@ router.get('/trending', async (req, res) => {
     // Deduplicate
     const seen = new Set();
     const unique = allTracks.filter(t => {
+      Object.assign(t, normalizeTrackRecord(t));
+      const durationSec = Number(t?.duration || 0);
+      if (durationSec > 0 && durationSec < 60) return false; // remove short clips/teasers
+      if (!t?.id) return false;
       if (seen.has(t.id)) return false;
       seen.add(t.id);
       return true;
@@ -467,7 +571,7 @@ router.get('/song/:id', async (req, res) => {
     if (hasProxy) {
       try {
         const response = await axios.get(`${JIOSAAVN_API_URL}/api/songs/${id}`, { timeout: 4000 });
-        const data = response.data;
+        const data = normalizeTrackRecord(response.data?.song || response.data?.data?.song || response.data?.data || response.data);
         cache.set(cacheKey, data);
         return res.json(data);
       } catch {}
@@ -487,8 +591,16 @@ router.get('/song/:id', async (req, res) => {
       },
       timeout: 8000,
     });
-    cache.set(cacheKey, response.data);
-    return res.json(response.data);
+    const data = normalizeTrackRecord(
+      response.data?.songs?.[0] ||
+      response.data?.results?.[0] ||
+      response.data?.data?.songs?.[0] ||
+      response.data?.data?.results?.[0] ||
+      response.data?.data ||
+      response.data,
+    );
+    cache.set(cacheKey, data);
+    return res.json(data);
   } catch (error: any) {
     console.error('Song detail error:', error?.message);
     res.status(500).json({ message: 'Error fetching song details' });

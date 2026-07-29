@@ -31,6 +31,9 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
   void initState() {
     super.initState();
     _tabs = TabController(length: 4, vsync: this);
+    _tabs.addListener(() {
+      if (mounted) setState(() {});
+    });
     _loadDownloads();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
@@ -128,12 +131,31 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
   @override
   Widget build(BuildContext context) {
     final library = context.watch<LibraryState>();
+    final recentTab = _trackList(
+      library.recentlyPlayed,
+      emptyMessage: 'No recently played songs',
+      emptyIcon: Icons.access_time,
+    );
+    final downloadsTab = _trackList(
+      downloads,
+      emptyMessage: 'No downloaded songs',
+      emptyIcon: Icons.download,
+      onRemoveDownload: (id) async {
+        await _downloadService.removeDownload(id);
+        await _loadDownloads();
+      },
+    );
+    final likedTab = _trackList(
+      library.likedSongs,
+      emptyMessage: 'No liked songs yet',
+      emptyIcon: Icons.favorite_outline,
+      onRemoveLiked: (track) => context.read<LibraryState>().toggleLike(track),
+    );
 
     return Container(
       color: const Color(0xFF121212),
       child: Column(
         children: [
-          // Top branding - matching React Native
           Container(
             padding: const EdgeInsets.only(left: 20, right: 20, top: 60, bottom: 5),
             child: Row(
@@ -141,7 +163,7 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
+                    color: const Color(0xFF1DB954).withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(
@@ -162,8 +184,6 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
               ],
             ),
           ),
-          
-          // Header text
           const Padding(
             padding: EdgeInsets.only(left: 20, bottom: 15),
             child: Text(
@@ -175,8 +195,6 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
               ),
             ),
           ),
-          
-          // Tab bar - matching React Native style
           Padding(
             padding: const EdgeInsets.only(left: 15, right: 15, bottom: 15),
             child: SingleChildScrollView(
@@ -194,23 +212,20 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
               ),
             ),
           ),
-            Expanded(
-              child: TabBarView(
-                controller: _tabs,
-                children: [
-                  _playlistTab(),
-                  _trackList(library.recentlyPlayed),
-                  _trackList(downloads, onRemoveDownload: (id) async {
-                    await _downloadService.removeDownload(id);
-                    _loadDownloads();
-                  }),
-                  _trackList(library.likedSongs),
-                ],
-              ),
+          Expanded(
+            child: TabBarView(
+              controller: _tabs,
+              children: [
+                _playlistTab(),
+                recentTab,
+                downloadsTab,
+                likedTab,
+              ],
             ),
-          ],
-        ),
-      );
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildTab(String label, int index, IconData icon) {
@@ -218,7 +233,11 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
     return GestureDetector(
       onTap: () {
         _tabs.animateTo(index);
-        if (index == 0) _loadPlaylists();
+        if (index == 0) {
+          _loadPlaylists();
+        } else if (index == 2) {
+          _loadDownloads();
+        }
       },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -255,7 +274,6 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
     return ListView(
       padding: const EdgeInsets.only(bottom: 120),
       children: [
-        // Create options matching Expo
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 15),
           child: Row(
@@ -308,7 +326,6 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
               ),
               child: Column(
                 children: [
-                  // Playlist Row
                   InkWell(
                     onTap: () => setState(() => expandedPlaylistId = expanded ? null : id),
                     child: Padding(
@@ -344,7 +361,6 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
                     ),
                   ),
 
-                  // Expanded tracks list
                   if (expanded)
                     Container(
                       color: const Color(0xFF181818),
@@ -384,8 +400,6 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
                                 },
                               );
                             }),
-                          
-                          // Inline add buttons matching Expo
                           Padding(
                             padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 15),
                             child: Row(
@@ -524,19 +538,33 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
     );
   }
 
-  Widget _trackList(List<Track> tracks, {Future<void> Function(String)? onRemoveDownload}) {
-    if (tracks.isEmpty) return _renderEmpty('No songs here', Icons.music_note_outlined);
+  Widget _trackList(
+    List<Track> tracks, {
+    required String emptyMessage,
+    required IconData emptyIcon,
+    Future<void> Function(String)? onRemoveDownload,
+    Future<void> Function(Track)? onRemoveLiked,
+  }) {
+    if (tracks.isEmpty) return _renderEmpty(emptyMessage, emptyIcon);
     return ListView.builder(
       padding: const EdgeInsets.only(bottom: 140),
       itemCount: tracks.length,
       itemBuilder: (context, index) {
         final track = tracks[index];
-        return _renderTrackItem(track, onRemove: onRemoveDownload != null ? () => onRemoveDownload(track.id) : null);
+        return _renderTrackItem(
+          track,
+          onRemoveDownload: onRemoveDownload != null ? () => onRemoveDownload(track.id) : null,
+          onRemoveLiked: onRemoveLiked != null ? () => onRemoveLiked(track) : null,
+        );
       },
     );
   }
 
-  Widget _renderTrackItem(Track track, {VoidCallback? onRemove, String? playlistId}) {
+  Widget _renderTrackItem(
+    Track track, {
+    VoidCallback? onRemoveDownload,
+    VoidCallback? onRemoveLiked,
+  }) {
     return GestureDetector(
       onTap: () async {
         final auth = context.read<AuthState>();
@@ -564,10 +592,15 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
                 ],
               ),
             ),
-            if (onRemove != null)
+            if (onRemoveLiked != null)
               IconButton(
-                onPressed: onRemove,
-                icon: const Icon(Icons.delete_outline, color: Color(0xFFFF6B6B), size: 20),
+                onPressed: onRemoveLiked,
+                icon: const Icon(Icons.favorite_border, color: Color(0xFFE74C3C), size: 20),
+              ),
+            if (onRemoveDownload != null)
+              IconButton(
+                onPressed: onRemoveDownload,
+                icon: const Icon(Icons.delete_outline, color: Color(0xFFE74C3C), size: 20),
               ),
             const Icon(Icons.play_circle_outline, color: Color(0xFF1DB954), size: 26),
           ],
@@ -725,40 +758,77 @@ class _CreatePlaylistModalState extends State<_CreatePlaylistModal> {
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               GestureDetector(
                 onTap: () => Navigator.pop(context),
-                child: const Row(children: [
-                  Icon(Icons.arrow_back, color: Colors.white, size: 24),
-                  SizedBox(width: 4),
-                  Text('Back', style: TextStyle(color: Color(0xFF1DB954), fontSize: 14, fontWeight: FontWeight.bold)),
-                ]),
+                child: const Row(
+                  children: [
+                    Icon(Icons.arrow_back, color: Colors.white, size: 24),
+                    SizedBox(width: 4),
+                    Text('Back', style: TextStyle(color: Color(0xFF1DB954), fontSize: 14, fontWeight: FontWeight.bold)),
+                  ],
+                ),
               ),
-              Expanded(child: Text(widget.targetPlaylistId != null ? 'Add to Playlist' : 'Create Playlist', textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold))),
+              Expanded(
+                child: Text(
+                  widget.targetPlaylistId != null
+                      ? (widget.mode == 'search' ? 'Search & Add' : widget.mode == 'csv' ? 'Add by Names' : 'AI Add')
+                      : (widget.mode == 'manual' ? 'Create Playlist' : widget.mode == 'search' ? 'Search & Add' : widget.mode == 'csv' ? 'Add by Song Names' : 'AI Playlist'),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
               GestureDetector(
                 onTap: () => Navigator.pop(context),
                 child: const Text('Cancel', style: TextStyle(color: Color(0xFF1DB954), fontSize: 14, fontWeight: FontWeight.bold)),
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 18),
           if (widget.targetPlaylistId == null)
             TextField(
               controller: _nameController,
               style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(hintText: 'Playlist name', hintStyle: TextStyle(color: Color(0xFF666666))),
+              decoration: const InputDecoration(
+                hintText: 'Playlist name',
+                hintStyle: TextStyle(color: Color(0xFF666666)),
+                filled: false,
+                border: InputBorder.none,
+              ),
             ),
           const SizedBox(height: 15),
           if (widget.mode == 'manual') ...[
             ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1DB954), minimumSize: const Size(double.infinity, 50)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF1DB954),
+                minimumSize: const Size(double.infinity, 50),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
+              ),
               onPressed: _submit,
-              child: _loading ? const CircularProgressIndicator(color: Colors.black) : const Text('Create Empty Playlist', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+              child: _loading
+                  ? const CircularProgressIndicator(color: Colors.black)
+                  : const Text('Create Empty Playlist', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
             ),
           ] else if (widget.mode == 'search' && !_showResults) ...[
             Row(
               children: [
-                Expanded(child: TextField(controller: _searchController, style: const TextStyle(color: Colors.white), textInputAction: TextInputAction.search, onSubmitted: (_) => _searchSongs(), decoration: const InputDecoration(hintText: 'Search songs...', hintStyle: TextStyle(color: Color(0xFF666666))))),
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    style: const TextStyle(color: Colors.white),
+                    textInputAction: TextInputAction.search,
+                    onSubmitted: (_) => _searchSongs(),
+                    decoration: const InputDecoration(
+                      hintText: 'Search songs...',
+                      hintStyle: TextStyle(color: Color(0xFF666666)),
+                      filled: false,
+                      border: InputBorder.none,
+                    ),
+                  ),
+                ),
                 const SizedBox(width: 8),
                 IconButton(onPressed: _searchSongs, icon: const Icon(Icons.search, color: Color(0xFF1DB954))),
               ],
@@ -792,7 +862,11 @@ class _CreatePlaylistModalState extends State<_CreatePlaylistModal> {
             const SizedBox(height: 10),
             if (_selectedTracks.isNotEmpty)
               ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1DB954), minimumSize: const Size(double.infinity, 45), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF1DB954),
+                  minimumSize: const Size(double.infinity, 45),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
                 onPressed: _submit, 
                 child: Text(_loading ? 'Creating...' : 'Add ${_selectedTracks.length} selected songs', style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
               ),
@@ -828,7 +902,11 @@ class _CreatePlaylistModalState extends State<_CreatePlaylistModal> {
               ),
               const SizedBox(height: 15),
               ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1DB954), minimumSize: const Size(double.infinity, 50), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF1DB954),
+                  minimumSize: const Size(double.infinity, 50),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
                 onPressed: _submit, 
                 child: Text(_loading ? 'Creating...' : 'Create with ${_selectedTracks.length} songs', style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
               ),
@@ -850,7 +928,11 @@ class _CreatePlaylistModalState extends State<_CreatePlaylistModal> {
             ),
             const SizedBox(height: 15),
             ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1DB954), minimumSize: const Size(double.infinity, 50), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF1DB954),
+                minimumSize: const Size(double.infinity, 50),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
               onPressed: _generate, 
               child: _loading ? const CircularProgressIndicator(color: Colors.black) : const Text('Find Songs', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
             ),

@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { View, ActivityIndicator, StyleSheet, Image } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, Image, PermissionsAndroid, Platform } from 'react-native';
 import { useFonts } from 'expo-font';
 import { Ionicons } from '@expo/vector-icons';
 import AppNavigator from './src/navigation/AppNavigator';
 import { useAuthStore } from './src/store/useAuthStore';
+import { bindTrackPlayerEvents, setupTrackPlayer } from './src/services/trackPlayerService';
 
 export default function App() {
   const { isReady, checkAuth } = useAuthStore();
@@ -17,10 +18,18 @@ export default function App() {
 
   useEffect(() => {
     checkAuth();
+    setupTrackPlayer().catch(() => {});
+    if (Platform.OS === 'android' && Platform.Version >= 33) {
+      PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS).catch(() => {});
+    }
+    const unbind = bindTrackPlayerEvents();
     const timer = setTimeout(() => {
       setForceReady(true);
     }, 3000);
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      unbind();
+    };
   }, []);
 
   const appReady = (isReady && fontsLoaded) || forceReady;

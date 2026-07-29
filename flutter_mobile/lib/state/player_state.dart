@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart' as ja;
 
 import '../models/track.dart';
+import '../services/download_service.dart';
 
 class PlayerState extends ChangeNotifier {
   final ja.AudioPlayer _audioPlayer = ja.AudioPlayer();
@@ -19,6 +20,11 @@ class PlayerState extends ChangeNotifier {
   int durationMs = 0;
   bool shuffleEnabled = false;
   bool repeatEnabled = false;
+  int? sleepTimerMinutes;
+  bool autoPlayNextEnabled = false;
+
+  Timer? _sleepTimer;
+  final DownloadService _downloadService = DownloadService();
 
   PlayerState() {
     _positionSub = _audioPlayer.positionStream.listen((p) {
@@ -29,7 +35,11 @@ class PlayerState extends ChangeNotifier {
     _playerStateSub = _audioPlayer.playerStateStream.listen((state) {
       isPlaying = state.playing;
       if (state.processingState == ja.ProcessingState.completed) {
-        playNext();
+        if (autoPlayNextEnabled || shuffleEnabled || repeatEnabled) {
+          playNext();
+        } else {
+          pause();
+        }
       }
       notifyListeners();
     });
@@ -48,17 +58,22 @@ class PlayerState extends ChangeNotifier {
     currentIndex = queue.indexWhere((e) => e.id == track.id);
     if (currentIndex < 0) currentIndex = 0;
 
-    currentTrack = track;
-    durationMs = track.durationMs;
+    final downloadedTrack = track.localUri != null
+        ? track
+        : await _downloadService.findDownloadedTrackFor(track);
+    final playableTrack = downloadedTrack ?? track;
+
+    currentTrack = playableTrack;
+    durationMs = playableTrack.durationMs;
     positionMs = 0;
     notifyListeners();
 
-    final url = track.localUri ?? track.url;
+    final url = playableTrack.localUri ?? playableTrack.url;
     if (url == null || url.isEmpty) return;
 
     try {
-      if (track.localUri != null) {
-        await _audioPlayer.setAudioSource(ja.AudioSource.file(track.localUri!));
+      if (playableTrack.localUri != null) {
+        await _audioPlayer.setAudioSource(ja.AudioSource.file(playableTrack.localUri!));
       } else {
         await _audioPlayer.setAudioSource(ja.AudioSource.uri(Uri.parse(url)));
       }
@@ -67,6 +82,27 @@ class PlayerState extends ChangeNotifier {
       debugPrint('Playback error: $e');
       playNext();
     }
+  }
+
+  void setSleepTimer(int minutes) {
+    sleepTimerMinutes = minutes;
+    _sleepTimer?.cancel();
+    _sleepTimer = Timer(Duration(minutes: minutes), () {
+      pause();
+    });
+    notifyListeners();
+  }
+
+  void clearSleepTimer() {
+    sleepTimerMinutes = null;
+    _sleepTimer?.cancel();
+    _sleepTimer = null;
+    notifyListeners();
+  }
+
+  void setAutoPlayNextEnabled(bool enabled) {
+    autoPlayNextEnabled = enabled;
+    notifyListeners();
   }
 
   Future<void> pause() async {
@@ -147,6 +183,7 @@ class PlayerState extends ChangeNotifier {
 
   @override
   void dispose() {
+    _sleepTimer?.cancel();
     _positionSub?.cancel();
     _playerStateSub?.cancel();
     _audioPlayer.dispose();

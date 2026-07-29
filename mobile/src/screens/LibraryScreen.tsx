@@ -10,7 +10,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { usePlayerStore } from '../store/usePlayerStore';
 import { useLibraryStore } from '../store/useLibraryStore';
-import { applyDownloadedUris, getDownloadedTracks } from '../services/downloadService';
+import { applyDownloadedUris, getDownloadedLocalUri, getDownloadedTracks } from '../services/downloadService';
 import { API_URL } from '../config/api';
 import { cleanSongTitle } from '../utils/textUtils';
 
@@ -367,6 +367,11 @@ export default function LibraryScreen() {
     const baseList = contextTracks && contextTracks.length > 0 ? contextTracks : [track];
     const baseQueue = baseList.map(toPlayerTrack);
     const immediateTrack = baseQueue.find(t => t.id === track.id) || toPlayerTrack(track);
+    const localUri = await getDownloadedLocalUri(String(immediateTrack.id));
+    if (localUri) {
+      immediateTrack.localUri = localUri;
+      immediateTrack.url = localUri;
+    }
     playTrack(immediateTrack, baseQueue);
 
     applyDownloadedUris(baseQueue)
@@ -497,10 +502,7 @@ export default function LibraryScreen() {
       <View style={styles.topBranding}>
         <View style={styles.logoRow}>
           <View style={styles.logoContainer}>
-            <Image 
-              source={require('../../assets/icon.png')} 
-              style={{ width: 32, height: 32, borderRadius: 6 }} 
-            />
+            <Ionicons name="musical-notes" size={24} color="#1DB954" />
           </View>
           <Text style={styles.brandTitle}>Tamil Music</Text>
         </View>
@@ -700,7 +702,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   logoContainer: { 
-    backgroundColor: 'rgba(139, 92, 246, 0.15)', 
+    backgroundColor: 'rgba(29, 185, 84, 0.12)', 
     padding: 8, 
     borderRadius: 12 
   },

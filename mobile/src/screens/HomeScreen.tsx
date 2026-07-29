@@ -11,7 +11,7 @@ import { useLibraryStore } from '../store/useLibraryStore';
 import { usePlayerStore } from '../store/usePlayerStore';
 import { API_URL } from '../config/api';
 import { cleanSongTitle } from '../utils/textUtils';
-import { applyDownloadedUris } from '../services/downloadService';
+import { applyDownloadedUris, getDownloadedLocalUri } from '../services/downloadService';
 
 const shuffleArray = (array: any[]) => {
   const newArr = [...array];
@@ -398,6 +398,11 @@ export default function HomeScreen({ navigation }: any) {
     const dedupedContext = dedupeForPlayerQueue(contextTracks);
     const baseQueue = dedupedContext.map(toPlayerTrack);
     const immediateTrack = baseQueue.find(t => t.id === track.id) || toPlayerTrack(track);
+    const localUri = await getDownloadedLocalUri(String(immediateTrack.id));
+    if (localUri) {
+      immediateTrack.localUri = localUri;
+      immediateTrack.url = localUri;
+    }
     playTrack(immediateTrack, baseQueue);
     addRecentlyPlayed(immediateTrack);
 
@@ -409,6 +414,7 @@ export default function HomeScreen({ navigation }: any) {
   };
 
   const getHighQualityImage = (track: any) => {
+    if (typeof track.image === 'string') return track.image;
     if (track.image && Array.isArray(track.image)) {
       return track.image[track.image.length - 1]?.url || track.image[1]?.url || track.image[0]?.url || null;
     }
@@ -517,10 +523,7 @@ export default function HomeScreen({ navigation }: any) {
         <View style={styles.headerTopSection}>
           <View style={styles.logoRow}>
             <View style={styles.logoContainer}>
-              <Image 
-                source={require('../../assets/icon.png')} 
-                style={{ width: 32, height: 32, borderRadius: 6 }} 
-              />
+              <Ionicons name="musical-notes" size={24} color="#1DB954" />
             </View>
             <Text style={styles.brandTitle}>Tamil Music</Text>
           </View>
@@ -618,7 +621,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   logoContainer: {
-    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+    backgroundColor: 'rgba(29, 185, 84, 0.12)',
     padding: 8,
     borderRadius: 12,
   },

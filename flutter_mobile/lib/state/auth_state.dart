@@ -17,6 +17,18 @@ class AuthState extends ChangeNotifier {
   String? token;
   Map<String, dynamic>? user;
 
+  String _onboardingKey([Map<String, dynamic>? profile]) {
+    final email = (profile?['email'] ?? user?['email'] ?? '').toString().trim().toLowerCase();
+    if (email.isNotEmpty) {
+      return 'onboardingComplete_$email';
+    }
+    final userId = (profile?['id'] ?? profile?['_id'] ?? user?['id'] ?? user?['_id'] ?? '').toString().trim();
+    if (userId.isNotEmpty) {
+      return 'onboardingComplete_$userId';
+    }
+    return 'onboardingComplete';
+  }
+
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
     token = prefs.getString('token');
@@ -27,7 +39,7 @@ class AuthState extends ChangeNotifier {
 
     final language = prefs.getStringList('preferredLanguages') ?? const [];
     final artists = prefs.getStringList('favoriteArtists') ?? const [];
-    onboardingComplete = prefs.getBool('onboardingComplete') ?? (language.isNotEmpty && artists.isNotEmpty);
+    onboardingComplete = prefs.getBool(_onboardingKey()) ?? (language.isNotEmpty && artists.isNotEmpty);
 
     isReady = true;
     notifyListeners();
@@ -41,6 +53,7 @@ class AuthState extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('token', token ?? '');
     await prefs.setString('user', jsonEncode(user ?? <String, dynamic>{}));
+    onboardingComplete = prefs.getBool(_onboardingKey(user)) ?? false;
     notifyListeners();
   }
 
@@ -61,7 +74,7 @@ class AuthState extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList('preferredLanguages', languages);
     await prefs.setStringList('favoriteArtists', artists);
-    await prefs.setBool('onboardingComplete', true);
+    await prefs.setBool(_onboardingKey(), true);
     onboardingComplete = true;
     notifyListeners();
   }

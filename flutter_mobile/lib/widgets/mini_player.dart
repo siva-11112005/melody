@@ -24,7 +24,7 @@ class MiniPlayer extends StatelessWidget {
         return Positioned(
           left: 8,
           right: 8,
-          bottom: 8,
+          bottom: MediaQuery.of(context).padding.bottom + kBottomNavigationBarHeight + 8,
           child: GestureDetector(
             onTap: onTap,
             child: Container(

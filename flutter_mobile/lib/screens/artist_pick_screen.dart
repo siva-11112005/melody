@@ -133,8 +133,8 @@ class _ArtistPickScreenState extends State<ArtistPickScreen> {
       body: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
             colors: [Color(0xFF121212), Color(0xFF1a1a2e)],
           ),
         ),
@@ -152,6 +152,7 @@ class _ArtistPickScreenState extends State<ArtistPickScreen> {
                   Wrap(
                     spacing: 16,
                     runSpacing: 16,
+                    alignment: WrapAlignment.spaceBetween,
                     children: artists.map((artist) {
                       final name = artist['name']!;
                       final color = _parseColor(artist['color']!);
@@ -235,7 +236,7 @@ class _ArtistPickScreenState extends State<ArtistPickScreen> {
                         final navigator = Navigator.of(context);
                         await auth.completeOnboarding(languages, selectedArtists.toList());
                         if (!mounted) return;
-                        navigator.pushNamedAndRemoveUntil('/login', (route) => false);
+                        navigator.pushNamedAndRemoveUntil('/', (route) => false);
                       },
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),

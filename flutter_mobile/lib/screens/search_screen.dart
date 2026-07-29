@@ -1,14 +1,27 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-
-import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../models/track.dart';
 import '../services/api_service.dart';
+import '../services/download_service.dart';
 import '../state/auth_state.dart';
 import '../state/library_state.dart';
 import '../state/player_state.dart';
 import '../utils/text_utils.dart';
+
+const List<String> _defaultQuickSearches = [
+  'Anirudh',
+  'A.R. Rahman',
+  'Yuvan',
+  'Sid Sriram',
+  'Ilaiyaraaja',
+  'Hip Hop Tamizha',
+];
+
+final _remixNoiseWords = RegExp(r'\b(remix|version|ver|live|karaoke|slowed|reverb|mashup|dj|mix|edit|cover)\b', caseSensitive: false);
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -18,16 +31,61 @@ class SearchScreen extends StatefulWidget {
 }
 
 class _SearchScreenState extends State<SearchScreen> {
-  final _controller = TextEditingController();
+  final TextEditingController _controller = TextEditingController();
+  final TextEditingController _playlistNameController = TextEditingController();
   final ApiService _api = ApiService();
+  final DownloadService _downloadService = DownloadService();
+
   List<Track> _results = [];
   List<String> _suggestions = [];
+  List<String> _quickSearches = _defaultQuickSearches;
+  List<Map<String, dynamic>> _playlists = [];
+  Set<String> _downloadedIds = {};
+
   bool _loading = false;
   bool _searched = false;
+  bool _showPlaylistSheet = false;
+  bool _loadingPlaylists = false;
 
-  static const List<String> _defaultQuickSearches = [
-    'Anirudh', 'A.R. Rahman', 'Yuvan', 'Sid Sriram', 'Ilaiyaraaja', 'Hip Hop Tamizha'
-  ];
+  Track? _selectedTrack;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFavorites();
+    _loadDownloads();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _playlistNameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadFavorites() async {
+    final prefs = await SharedPreferences.getInstance();
+    final data = prefs.getString('favoriteArtists');
+    if (data == null) return;
+    try {
+      final artists = (jsonDecode(data) as List).map((e) => e.toString()).where((e) => e.trim().isNotEmpty).take(8).toList();
+      if (!mounted || artists.isEmpty) return;
+      setState(() => _quickSearches = artists);
+    } catch (_) {}
+  }
+
+  Future<void> _loadDownloads() async {
+    final ids = await _downloadService.getDownloadedIds();
+    if (!mounted) return;
+    setState(() => _downloadedIds = ids);
+  }
+
+  String _sanitizeQuery(String value) {
+    return value
+        .replaceAll(RegExp(r"[^\p{L}\p{N}\s\.'&-]", unicode: true), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
 
   String _enrichQuery(String query) {
     final q = query.trim();
@@ -39,79 +97,258 @@ class _SearchScreenState extends State<SearchScreen> {
     return q;
   }
 
-  String? _extractSongId(String input) {
-    final urlMatch = RegExp(r'/song/[^/]+/([a-zA-Z0-9]+)').firstMatch(input);
-    if (urlMatch != null) return urlMatch.group(1);
-    if (RegExp(r'^[a-zA-Z0-9]{8,}$').hasMatch(input.trim())) return input.trim();
-    return null;
+  String _songKey(Track track) {
+    final title = TextUtils.cleanSongTitle(track.title).toLowerCase().trim();
+    return title
+        .replaceAll(RegExp(r'\s*\(from\s+.*?\)\s*', caseSensitive: false), ' ')
+        .replaceAll(RegExp(r'\s*\(.*?\)\s*'), ' ')
+        .replaceAll(RegExp(r'\s*-\s*.*$', caseSensitive: false), '')
+        .replaceAll(_remixNoiseWords, '')
+        .replaceAll(RegExp(r'[^a-z0-9]'), '');
   }
 
-  Future<void> _search(String query) async {
-    if (query.trim().isEmpty) return;
+  String _artistKey(Track track) {
+    return TextUtils.cleanSongTitle(track.artist).toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+  }
+
+  List<Track> _dedupeTracks(List<Track> tracks) {
+    final seen = <String>{};
+    final output = <Track>[];
+    for (final track in tracks) {
+      final key = '${_songKey(track)}:${_artistKey(track)}';
+      if (key == ':') continue;
+      if (seen.contains(key)) continue;
+      seen.add(key);
+      output.add(track);
+    }
+    return output;
+  }
+
+  List<Track> _mapSearchTracks(List<Track> tracks) {
+    return tracks.map((track) {
+      return Track(
+        id: track.id,
+        title: TextUtils.cleanSongTitle(track.title),
+        artist: TextUtils.cleanSongTitle(track.artist),
+        artwork: track.artwork,
+        url: track.url,
+        durationMs: track.durationMs,
+        downloadUrl: track.downloadUrl,
+        localUri: track.localUri,
+      );
+    }).toList();
+  }
+
+  Future<void> _search([String? queryOverride]) async {
+    final rawInput = queryOverride ?? _controller.text;
+    final q = _sanitizeQuery(rawInput);
+    if (q.isEmpty) return;
+
     setState(() {
       _loading = true;
       _searched = true;
       _suggestions = [];
     });
 
-    final songId = _extractSongId(query);
-    List<Track> tracks = [];
-
-    if (songId != null) {
-      final song = await _api.getSongById(songId);
-      tracks = song != null ? [song] : [];
-    } else {
-      final enriched = _enrichQuery(query);
-      tracks = await _api.searchSongs(enriched, limit: 30);
+    if (queryOverride == null) {
+      _controller.text = q;
     }
 
-    if (!mounted) return;
-    setState(() {
-      _results = tracks;
-      _loading = false;
-    });
-    if (songId == null) {
-      await context.read<LibraryState>().addRecentSearch(query);
-    }
-  }
+    final variants = <String>[
+      _enrichQuery(q),
+      q,
+      '$q tamil full song',
+      '$q audio song',
+      '$q jukebox',
+      '${q.split(' ').take(4).join(' ')} tamil',
+    ].toSet().toList();
 
-  @override
-  void initState() {
-    super.initState();
-    _loadFavorites();
-  }
-
-  Future<void> _loadFavorites() async {
-    final prefs = await SharedPreferences.getInstance();
-    final data = prefs.getString('favoriteArtists');
-    if (data != null) {
+    final merged = <Track>[];
+    for (final variant in variants) {
       try {
-        final List<dynamic> artists = jsonDecode(data);
-        if (artists.isNotEmpty) {
-          setState(() {
-            _quickSearches = artists.map((e) => e.toString()).take(8).toList();
-          });
+        final tracks = await _api.searchSongs(variant, limit: 25);
+        merged.addAll(tracks);
+        if (_dedupeTracks(merged).length >= 40) {
+          break;
         }
       } catch (_) {}
     }
+
+    final results = _mapSearchTracks(_dedupeTracks(merged));
+    if (!mounted) return;
+    setState(() {
+      _results = results;
+      _loading = false;
+    });
+
+    if (results.isNotEmpty && queryOverride == null) {
+      await context.read<LibraryState>().addRecentSearch(q);
+    }
   }
 
-  List<String> _quickSearches = _defaultQuickSearches;
-
   Future<void> _loadSuggestions(String text) async {
-    if (text.length < 2) {
+    if (text.trim().length < 2) {
       setState(() => _suggestions = []);
       return;
     }
-    final suggestions = await _api.suggest(text);
-    if (!mounted) return;
-    setState(() => _suggestions = suggestions);
+    try {
+      final suggestions = await _api.suggest(text);
+      if (!mounted) return;
+      setState(() => _suggestions = suggestions.take(6).toList());
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _suggestions = []);
+    }
   }
 
-  String _formatDuration(int seconds) {
-    final mins = seconds ~/ 60;
-    final secs = seconds % 60;
-    return '$mins:${secs < 10 ? '0' : ''}$secs';
+  Future<void> _loadPlaylists() async {
+    final token = context.read<AuthState>().token;
+    if (token == null || token.isEmpty) return;
+    setState(() => _loadingPlaylists = true);
+    try {
+      final items = await _api.getPlaylists(token);
+      if (!mounted) return;
+      setState(() => _playlists = items);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _playlists = []);
+    } finally {
+      if (mounted) setState(() => _loadingPlaylists = false);
+    }
+  }
+
+  Future<void> _addToPlaylist(String playlistId, Track track) async {
+    final token = context.read<AuthState>().token;
+    if (token == null || token.isEmpty) return;
+    await _api.addTrackToPlaylist(token, playlistId, track);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Added to playlist!')));
+  }
+
+  Future<void> _createPlaylistAndAdd(Track track) async {
+    final token = context.read<AuthState>().token;
+    if (token == null || token.isEmpty) return;
+    final name = _playlistNameController.text.trim();
+    if (name.isEmpty) return;
+
+    final created = await _api.createPlaylist(token, name);
+    final playlistId = (created['_id'] ?? created['id'])?.toString();
+    if (playlistId != null && playlistId.isNotEmpty) {
+      await _api.addTrackToPlaylist(token, playlistId, track);
+    }
+    if (!mounted) return;
+    Navigator.pop(context);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Created "$name"')));
+  }
+
+  Future<void> _handlePlay(Track track) async {
+    final auth = context.read<AuthState>();
+    final library = context.read<LibraryState>();
+    await context.read<PlayerState>().playTrack(track, contextQueue: _results);
+    await library.addRecentlyPlayed(track, token: auth.token);
+  }
+
+  void _openPlaylistSheet(Track track) {
+    _selectedTrack = track;
+    _playlistNameController.clear();
+    _loadPlaylists();
+    setState(() => _showPlaylistSheet = true);
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF1E1E1E),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
+      builder: (sheetContext) {
+        return _PlaylistSheet(
+          selectedTrack: track,
+          playlists: _playlists,
+          loading: _loadingPlaylists,
+          playlistNameController: _playlistNameController,
+          onCreateAndAdd: () => _createPlaylistAndAdd(track),
+          onAddToPlaylist: (playlistId) => _addToPlaylist(playlistId, track),
+          onRefresh: _loadPlaylists,
+        );
+      },
+    ).whenComplete(() {
+      if (mounted) {
+        setState(() => _showPlaylistSheet = false);
+      }
+    });
+  }
+
+  Widget _buildTrackItem(Track track) {
+    final durationText = track.durationMs > 0 ? ' - ${_formatDuration(track.durationMs ~/ 1000)}' : '';
+    return GestureDetector(
+      onTap: () => _handlePlay(track),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: SizedBox(
+                width: 52,
+                height: 52,
+                child: Image.network(
+                  track.artwork ?? 'https://placehold.co/52x52/282828/fff?text=music',
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(
+                    color: const Color(0xFF282828),
+                    child: const Icon(Icons.music_note, color: Colors.white70, size: 24),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 15),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    TextUtils.cleanSongTitle(track.title),
+                    style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    '${TextUtils.cleanSongTitle(track.artist)}$durationText',
+                    style: const TextStyle(color: Color(0xFFb3b3b3), fontSize: 13),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            if (_downloadedIds.contains(track.id) || _downloadedIds.contains(_downloadService.trackKey(track)))
+              Container(
+                margin: const EdgeInsets.only(right: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1DB954).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: const Text(
+                  'Saved',
+                  style: TextStyle(
+                    color: Color(0xFF1DB954),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            GestureDetector(
+              onTap: () => _openPlaylistSheet(track),
+              child: const Padding(
+                padding: EdgeInsets.all(6),
+                child: Icon(Icons.add_circle_outline, color: Color(0xFFb3b3b3), size: 24),
+              ),
+            ),
+            const Icon(Icons.play_circle_outline, color: Color(0xFF1DB954), size: 28),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -123,7 +360,6 @@ class _SearchScreenState extends State<SearchScreen> {
       child: ListView(
         padding: const EdgeInsets.only(bottom: 140),
         children: [
-          // Top branding
           Padding(
             padding: const EdgeInsets.only(left: 20, right: 20, top: 60, bottom: 5),
             child: Row(
@@ -131,13 +367,13 @@ class _SearchScreenState extends State<SearchScreen> {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
+                    color: const Color(0xFF1DB954).withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(Icons.music_note, color: Color(0xFF1DB954), size: 24),
                 ),
                 const SizedBox(width: 10),
-                const Text('Tamil Music', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                const Text('Tamil Music', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
               ],
             ),
           ),
@@ -145,8 +381,6 @@ class _SearchScreenState extends State<SearchScreen> {
             padding: EdgeInsets.only(left: 20, bottom: 15),
             child: Text('Search', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
           ),
-
-          // Search bar
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Container(
@@ -165,9 +399,9 @@ class _SearchScreenState extends State<SearchScreen> {
                     child: TextField(
                       controller: _controller,
                       style: const TextStyle(color: Colors.white, fontSize: 16),
-                      onChanged: (t) {
-                        _loadSuggestions(t);
-                        if (t.isEmpty) {
+                      onChanged: (text) {
+                        _loadSuggestions(text);
+                        if (text.isEmpty) {
                           setState(() {
                             _searched = false;
                             _results = [];
@@ -206,8 +440,6 @@ class _SearchScreenState extends State<SearchScreen> {
             ),
           ),
           const SizedBox(height: 10),
-
-          // Autocomplete suggestions
           if (_suggestions.isNotEmpty && !_searched)
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 20),
@@ -216,11 +448,11 @@ class _SearchScreenState extends State<SearchScreen> {
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Column(
-                children: _suggestions.take(6).map((s) {
+                children: _suggestions.map((suggestion) {
                   return GestureDetector(
                     onTap: () {
-                      _controller.text = s;
-                      _search(s);
+                      _controller.text = suggestion;
+                      _search(suggestion);
                     },
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
@@ -232,7 +464,12 @@ class _SearchScreenState extends State<SearchScreen> {
                           const Icon(Icons.search_outlined, color: Color(0xFF888888), size: 16),
                           const SizedBox(width: 10),
                           Expanded(
-                            child: Text(s, style: const TextStyle(color: Color(0xFFDDDDDD), fontSize: 14), maxLines: 1, overflow: TextOverflow.ellipsis),
+                            child: Text(
+                              suggestion,
+                              style: const TextStyle(color: Color(0xFFDDDDDD), fontSize: 14),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                           const Icon(Icons.arrow_forward, color: Color(0xFF555555), size: 14),
                         ],
@@ -242,8 +479,6 @@ class _SearchScreenState extends State<SearchScreen> {
                 }).toList(),
               ),
             ),
-
-          // Quick Picks
           if (!_searched && _suggestions.isEmpty) ...[
             const Padding(
               padding: EdgeInsets.only(left: 20, top: 10, bottom: 12),
@@ -254,11 +489,11 @@ class _SearchScreenState extends State<SearchScreen> {
               child: Wrap(
                 spacing: 10,
                 runSpacing: 10,
-                children: _defaultQuickSearches.map((q) {
+                children: _quickSearches.map((query) {
                   return GestureDetector(
                     onTap: () {
-                      _controller.text = q;
-                      _search(q);
+                      _controller.text = query;
+                      _search(query);
                     },
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -266,25 +501,23 @@ class _SearchScreenState extends State<SearchScreen> {
                         color: const Color(0xFF2a2a2a),
                         borderRadius: BorderRadius.circular(20),
                       ),
-                      child: Text(q, style: const TextStyle(color: Colors.white, fontSize: 14)),
+                      child: Text(query, style: const TextStyle(color: Colors.white, fontSize: 14)),
                     ),
                   );
                 }).toList(),
               ),
             ),
             const SizedBox(height: 15),
-
-            // Recent Searches
             if (recent.isNotEmpty) ...[
               const Padding(
                 padding: EdgeInsets.only(left: 20, top: 10, bottom: 12),
                 child: Text('Recent Searches', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
               ),
-              ...recent.take(5).map((q) {
+              ...recent.take(5).map((query) {
                 return GestureDetector(
                   onTap: () {
-                    _controller.text = q;
-                    _search(q);
+                    _controller.text = query;
+                    _search(query);
                   },
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
@@ -292,7 +525,7 @@ class _SearchScreenState extends State<SearchScreen> {
                       children: [
                         const Icon(Icons.access_time_outlined, color: Color(0xFFb3b3b3), size: 20),
                         const SizedBox(width: 12),
-                        Expanded(child: Text(q, style: const TextStyle(color: Color(0xFFDDDDDD), fontSize: 15))),
+                        Expanded(child: Text(query, style: const TextStyle(color: Color(0xFFDDDDDD), fontSize: 15))),
                         const Icon(Icons.arrow_forward, color: Color(0xFF555555), size: 16),
                       ],
                     ),
@@ -301,8 +534,6 @@ class _SearchScreenState extends State<SearchScreen> {
               }),
             ],
           ],
-
-          // Results
           if (_loading)
             const Padding(
               padding: EdgeInsets.only(top: 50),
@@ -321,163 +552,61 @@ class _SearchScreenState extends State<SearchScreen> {
                 ),
               )
             else
-              ..._results.map((track) => _trackItem(track)),
+              ..._results.map(_buildTrackItem),
           ],
         ],
       ),
     );
   }
 
-  Widget _trackItem(Track track) {
-    return GestureDetector(
-      onTap: () async {
-        final auth = context.read<AuthState>();
-        final library = context.read<LibraryState>();
-        await context.read<PlayerState>().playTrack(track, contextQueue: _results);
-        await library.addRecentlyPlayed(track, token: auth.token);
-      },
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
-        child: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: track.artwork != null
-                  ? Image.network(track.artwork!, width: 52, height: 52, fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => _artworkPlaceholder())
-                  : _artworkPlaceholder(),
-            ),
-            const SizedBox(width: 15),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(track.title, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
-                  const SizedBox(height: 3),
-                  Text(
-                    '${track.artist}${track.durationMs > 0 ? ' • ${_formatDuration(track.durationMs ~/ 1000)}' : ''}',
-                    style: const TextStyle(color: Color(0xFFb3b3b3), fontSize: 13),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-            GestureDetector(
-              onTap: () => _showPlaylistModal(context, track),
-              child: const Padding(
-                padding: EdgeInsets.all(6),
-                child: Icon(Icons.add_circle_outline, color: Color(0xFFb3b3b3), size: 24),
-              ),
-            ),
-            const Icon(Icons.play_circle_outline, color: Color(0xFF1DB954), size: 28),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _artworkPlaceholder() {
-    return Container(
-      width: 52, height: 52,
-      color: const Color(0xFF282828),
-      child: const Icon(Icons.music_note, color: Colors.white70, size: 24),
-    );
-  }
-
-  void _showPlaylistModal(BuildContext context, Track track) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF1E1E1E),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
-      ),
-      isScrollControlled: true,
-      builder: (ctx) => _PlaylistModal(track: track),
-    );
+  String _formatDuration(int seconds) {
+    final minutes = seconds ~/ 60;
+    final secondsPart = seconds % 60;
+    return '$minutes:${secondsPart < 10 ? '0' : ''}$secondsPart';
   }
 }
 
-class _PlaylistModal extends StatefulWidget {
-  final Track track;
-  const _PlaylistModal({required this.track});
+class _PlaylistSheet extends StatefulWidget {
+  const _PlaylistSheet({
+    required this.selectedTrack,
+    required this.playlists,
+    required this.loading,
+    required this.playlistNameController,
+    required this.onCreateAndAdd,
+    required this.onAddToPlaylist,
+    required this.onRefresh,
+  });
+
+  final Track selectedTrack;
+  final List<Map<String, dynamic>> playlists;
+  final bool loading;
+  final TextEditingController playlistNameController;
+  final Future<void> Function() onCreateAndAdd;
+  final Future<void> Function(String playlistId) onAddToPlaylist;
+  final Future<void> Function() onRefresh;
 
   @override
-  State<_PlaylistModal> createState() => _PlaylistModalState();
+  State<_PlaylistSheet> createState() => _PlaylistSheetState();
 }
 
-class _PlaylistModalState extends State<_PlaylistModal> {
-  final ApiService _api = ApiService();
-  final _controller = TextEditingController();
-  List<Map<String, dynamic>> _playlists = [];
-  bool _loading = true;
-
+class _PlaylistSheetState extends State<_PlaylistSheet> {
   @override
   void initState() {
     super.initState();
-    _fetchPlaylists();
-  }
-
-  Future<void> _fetchPlaylists() async {
-    final token = context.read<AuthState>().token;
-    if (token == null) {
-      setState(() => _loading = false);
-      return;
-    }
-    try {
-      final list = await _api.getPlaylists(token);
-      setState(() {
-        _playlists = list;
-        _loading = false;
-      });
-    } catch (_) {
-      setState(() => _loading = false);
-    }
-  }
-
-  Future<void> _addToPlaylist(String playlistId) async {
-    final token = context.read<AuthState>().token;
-    if (token == null) return;
-    try {
-      await _api.addTrackToPlaylist(token, playlistId, widget.track);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Added to playlist!')));
-      Navigator.pop(context);
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
-    }
-  }
-
-  Future<void> _createAndAdd() async {
-    final name = _controller.text.trim();
-    if (name.isEmpty) return;
-    final token = context.read<AuthState>().token;
-    if (token == null) return;
-    try {
-      final pl = await _api.createPlaylist(token, name);
-      final id = pl['_id'] ?? pl['id'];
-      if (id != null) {
-        await _addToPlaylist(id);
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
-    }
+    widget.onRefresh();
   }
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
-        left: 20, right: 20, top: 20,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+        shrinkWrap: true,
         children: [
-          // Header
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               GestureDetector(
                 onTap: () => Navigator.pop(context),
@@ -490,7 +619,7 @@ class _PlaylistModalState extends State<_PlaylistModal> {
                 ),
               ),
               const Expanded(
-                child: Text('Add to Playlist', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+                child: Text('Add to Playlist', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
               ),
               GestureDetector(
                 onTap: () => Navigator.pop(context),
@@ -498,17 +627,15 @@ class _PlaylistModalState extends State<_PlaylistModal> {
               ),
             ],
           ),
-          const SizedBox(height: 15),
+          const SizedBox(height: 18),
           Text(
-            '${widget.track.title} — ${widget.track.artist}',
+            '${TextUtils.cleanSongTitle(widget.selectedTrack.title)} - ${TextUtils.cleanSongTitle(widget.selectedTrack.artist)}',
+            textAlign: TextAlign.center,
             style: const TextStyle(color: Color(0xFFb3b3b3), fontSize: 13),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 15),
-
-          // New playlist row
+          const SizedBox(height: 18),
           Row(
             children: [
               Expanded(
@@ -519,7 +646,7 @@ class _PlaylistModalState extends State<_PlaylistModal> {
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: TextField(
-                    controller: _controller,
+                    controller: widget.playlistNameController,
                     style: const TextStyle(color: Colors.white, fontSize: 15),
                     decoration: const InputDecoration(
                       hintText: 'New playlist name...',
@@ -533,7 +660,7 @@ class _PlaylistModalState extends State<_PlaylistModal> {
               ),
               const SizedBox(width: 10),
               GestureDetector(
-                onTap: _createAndAdd,
+                onTap: () => widget.onCreateAndAdd(),
                 child: Container(
                   width: 44,
                   height: 44,
@@ -547,24 +674,34 @@ class _PlaylistModalState extends State<_PlaylistModal> {
             ],
           ),
           const SizedBox(height: 15),
-
-          // Existing playlists
-          if (_loading)
-            const Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator(color: Color(0xFF1DB954)))
-          else if (_playlists.isEmpty)
+          if (widget.loading)
+            const Padding(
+              padding: EdgeInsets.all(20),
+              child: Center(child: CircularProgressIndicator(color: Color(0xFF1DB954))),
+            )
+          else if (widget.playlists.isEmpty)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 30),
-              child: Text('No playlists yet. Create one above!', style: TextStyle(color: Color(0xFF666666), fontSize: 14)),
+              child: Text('No playlists yet. Create one above!', style: TextStyle(color: Color(0xFF666666), fontSize: 14), textAlign: TextAlign.center),
             )
           else
             SizedBox(
               height: 250,
               child: ListView.builder(
-                itemCount: _playlists.length,
-                itemBuilder: (ctx, i) {
-                  final p = _playlists[i];
+                itemCount: widget.playlists.length,
+                itemBuilder: (context, index) {
+                  final playlist = widget.playlists[index];
+                  final playlistId = (playlist['_id'] ?? playlist['id'])?.toString() ?? '';
+                  final tracks = (playlist['tracks'] as List?) ?? const [];
                   return GestureDetector(
-                    onTap: () => _addToPlaylist(p['_id'] ?? p['id']),
+                    onTap: playlistId.isEmpty
+                        ? null
+                        : () async {
+                            await widget.onAddToPlaylist(playlistId);
+                            if (mounted) {
+                              Navigator.pop(context);
+                            }
+                          },
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       decoration: const BoxDecoration(
@@ -576,9 +713,9 @@ class _PlaylistModalState extends State<_PlaylistModal> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(p['name'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500)),
+                                Text((playlist['name'] ?? '').toString(), style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w500)),
                                 const SizedBox(height: 2),
-                                Text('${(p['tracks'] as List?)?.length ?? 0} songs', style: const TextStyle(color: Color(0xFF888888), fontSize: 12)),
+                                Text('${tracks.length} songs', style: const TextStyle(color: Color(0xFF888888), fontSize: 12)),
                               ],
                             ),
                           ),

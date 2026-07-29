@@ -110,7 +110,16 @@ class _AuthGate extends StatelessWidget {
         body: Stack(
           children: [
             Positioned.fill(child: AppBackdrop()),
-            Center(child: CircularProgressIndicator(color: Color(0xFF1DB954))),
+            Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _SplashLogo(),
+                  SizedBox(height: 30),
+                  CircularProgressIndicator(color: Color(0xFF1DB954)),
+                ],
+              ),
+            ),
           ],
         ),
       );
@@ -182,5 +191,40 @@ class _ProfileStandalone extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Scaffold(body: SafeArea(child: ProfileScreen()));
+  }
+}
+
+class _SplashLogo extends StatelessWidget {
+  const _SplashLogo();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 140,
+      height: 140,
+      decoration: BoxDecoration(
+        color: const Color(0x1A1DB954),
+        borderRadius: BorderRadius.circular(70),
+      ),
+      child: Center(
+        child: Container(
+          width: 100,
+          height: 100,
+          decoration: BoxDecoration(
+            color: Colors.transparent,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: Image.asset(
+              'assets/icon.png',
+              width: 100,
+              height: 100,
+              fit: BoxFit.cover,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

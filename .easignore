@@ -1,8 +1,16 @@
 # Root-level EAS ignore to avoid locked local Android cache files
-mobile/android/.gradle/
-mobile/android/build/
-mobile/android/app/build/
+mobile/android/
+mobile/ios/
+
+# Exclude other monorepo projects
+flutter_app/
+flutter_mobile/
+backend/
+node_modules/
+*.apk
+*.aab
 
 # Local artifacts
 downloads/
 *.log
+.expo/

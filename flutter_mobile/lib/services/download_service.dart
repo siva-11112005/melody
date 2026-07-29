@@ -9,16 +9,87 @@ import '../models/track.dart';
 
 class DownloadService {
   static const _downloadsKey = 'downloads';
+  List<Track>? _cachedDownloads;
+
+  String trackKey(Track track) {
+    return _normalize('${track.title} ${track.artist}');
+  }
+
+  String _normalize(String value) {
+    return value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '');
+  }
 
   Future<List<Track>> getDownloads() async {
+    if (_cachedDownloads != null) {
+      return List<Track>.unmodifiable(_cachedDownloads!);
+    }
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_downloadsKey);
     if (raw == null || raw.isEmpty) return const [];
     final decoded = jsonDecode(raw) as List;
-    return decoded
+    final items = decoded
         .whereType<Map<String, dynamic>>()
         .map((e) => Track.fromJson(e))
         .toList();
+    _cachedDownloads = items;
+    return List<Track>.unmodifiable(items);
+  }
+
+  Future<Track?> findDownloadedTrack(String trackId) async {
+    final tracks = await getDownloads();
+    for (final track in tracks) {
+      if (track.id == trackId) {
+        if (track.localUri != null) {
+          final file = File(track.localUri!);
+          if (await file.exists()) {
+            return track;
+          }
+        }
+        break;
+      }
+    }
+    return null;
+  }
+
+  Future<Track?> findDownloadedTrackFor(Track track) async {
+    final tracks = await getDownloads();
+    final key = trackKey(track);
+    for (final item in tracks) {
+      final matchesById = item.id == track.id;
+      final matchesByFingerprint = item.fingerprint != null && item.fingerprint == key;
+      final matchesBySong = trackKey(item) == key;
+      if (matchesById || matchesByFingerprint || matchesBySong) {
+        if (item.localUri != null) {
+          final file = File(item.localUri!);
+          if (await file.exists()) {
+            return item;
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  Future<bool> isDownloaded(String trackId) async {
+    return (await findDownloadedTrack(trackId)) != null;
+  }
+
+  Future<bool> isDownloadedTrack(Track track) async {
+    return (await findDownloadedTrackFor(track)) != null;
+  }
+
+  Future<Set<String>> getDownloadedIds() async {
+    final tracks = await getDownloads();
+    final validIds = <String>{};
+    for (final track in tracks) {
+      if (track.localUri == null) continue;
+      final file = File(track.localUri!);
+      if (await file.exists()) {
+        if (track.id.isNotEmpty) validIds.add(track.id);
+        validIds.add(trackKey(track));
+      }
+    }
+    return validIds;
   }
 
   Future<void> removeDownload(String trackId) async {
@@ -74,8 +145,17 @@ class DownloadService {
     final file = File(path);
     await file.writeAsBytes(response.bodyBytes);
 
-    final downloaded = track.copyWith(url: path, localUri: path);
-    final withoutCurrent = existing.where((e) => e.id != track.id).toList();
+    final downloaded = track.copyWith(
+      url: path,
+      localUri: path,
+      fingerprint: trackKey(track),
+    );
+    final withoutCurrent = existing.where((e) {
+      final sameId = e.id == track.id;
+      final sameFingerprint = e.fingerprint != null && e.fingerprint == downloaded.fingerprint;
+      final sameSong = trackKey(e) == downloaded.fingerprint;
+      return !(sameId || sameFingerprint || sameSong);
+    }).toList();
     await _save([...withoutCurrent, downloaded]);
     return downloaded;
   }
@@ -95,6 +175,7 @@ class DownloadService {
   }
 
   Future<void> _save(List<Track> tracks) async {
+    _cachedDownloads = List<Track>.from(tracks);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(
       _downloadsKey,

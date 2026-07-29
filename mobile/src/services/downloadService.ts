@@ -1,6 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Alert } from 'react-native';
+let downloadsCache: any[] | null = null;
 
 const normalizeHttpUrl = (value: unknown): string | null => {
   if (typeof value !== 'string') return null;
@@ -135,6 +136,7 @@ export const downloadTrack = async (track: any) => {
               downloadedAt: new Date().toISOString(),
             }];
             await AsyncStorage.setItem('downloads', JSON.stringify(updated));
+            downloadsCache = updated;
             return result.uri;
           }
 
@@ -159,12 +161,24 @@ export const downloadTrack = async (track: any) => {
 
 export const getDownloadedTracks = async () => {
   try {
+    if (downloadsCache) return downloadsCache;
     const existingStr = await AsyncStorage.getItem('downloads');
-    return existingStr ? JSON.parse(existingStr) : [];
+    const parsed = existingStr ? JSON.parse(existingStr) : [];
+    downloadsCache = parsed;
+    return parsed;
   } catch (error) {
     console.error('Error fetching downloads:', error);
     return [];
   }
+};
+
+export const getDownloadedLocalUri = async (trackId: string): Promise<string | null> => {
+  if (!trackId) return null;
+  const downloaded = await getDownloadedTracks();
+  const found = downloaded.find((item: any) => item?.id === trackId && item?.localUri);
+  if (!found?.localUri) return null;
+  const info = await FileSystem.getInfoAsync(found.localUri);
+  return info.exists ? found.localUri : null;
 };
 
 export const applyDownloadedUris = async (tracks: any[]) => {
@@ -206,6 +220,7 @@ export const removeDownload = async (trackId: string) => {
     
     const updated = existing.filter((t: any) => t.id !== trackId);
     await AsyncStorage.setItem('downloads', JSON.stringify(updated));
+    downloadsCache = updated;
   } catch (error) {
     console.error('Error removing download:', error);
   }

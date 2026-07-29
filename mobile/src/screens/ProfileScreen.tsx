@@ -18,6 +18,8 @@ export default function ProfileScreen() {
   const [favArtists, setFavArtists] = useState<string[]>([]);
   const [showEditNameModal, setShowEditNameModal] = useState(false);
   const [editingName, setEditingName] = useState('');
+  const [showAutoOffModal, setShowAutoOffModal] = useState(false);
+  const [autoOffInput, setAutoOffInput] = useState('');
   const { sleepTimerMinutes, setSleepTimer, clearSleepTimer, autoPlayNextEnabled, setAutoPlayNextEnabled } = usePlayerStore();
 
   useEffect(() => { loadStats(); }, []);
@@ -56,6 +58,16 @@ export default function ProfileScreen() {
     } catch {
       Alert.alert('Error', 'Could not update auto off setting');
     }
+  };
+
+  const saveCustomAutoOff = async () => {
+    const minutes = parseInt(autoOffInput.trim(), 10);
+    if (Number.isNaN(minutes) || minutes <= 0) {
+      Alert.alert('Invalid time', 'Enter minutes only (example: 10)');
+      return;
+    }
+    await setAutoOffMinutes(minutes);
+    setShowAutoOffModal(false);
   };
 
   const toggleAutoPlayNext = async () => {
@@ -183,25 +195,20 @@ export default function ProfileScreen() {
         <Text style={styles.menuText}>Clear Cache</Text>
         <Ionicons name="chevron-forward" size={18} color="#555" />
       </TouchableOpacity>
-      <TouchableOpacity style={styles.menuItem} onPress={() => setAutoOffMinutes(15)}>
+      <TouchableOpacity style={styles.menuItem} onPress={() => {
+        setAutoOffInput(sleepTimerMinutes ? String(sleepTimerMinutes) : '');
+        setShowAutoOffModal(true);
+      }}>
         <Ionicons name="moon-outline" size={22} color="#b3b3b3" />
-        <Text style={styles.menuText}>Auto Off 15 min</Text>
-        <Ionicons name="chevron-forward" size={18} color="#555" />
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.menuItem} onPress={() => setAutoOffMinutes(30)}>
-        <Ionicons name="moon-outline" size={22} color="#b3b3b3" />
-        <Text style={styles.menuText}>Auto Off 30 min</Text>
-        <Ionicons name="chevron-forward" size={18} color="#555" />
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.menuItem} onPress={() => setAutoOffMinutes(60)}>
-        <Ionicons name="moon-outline" size={22} color="#b3b3b3" />
-        <Text style={styles.menuText}>Auto Off 60 min</Text>
+        <Text style={styles.menuText}>
+          {sleepTimerMinutes ? `Auto Off: ${sleepTimerMinutes} min` : 'Auto Off (Custom Time)'}
+        </Text>
         <Ionicons name="chevron-forward" size={18} color="#555" />
       </TouchableOpacity>
       <TouchableOpacity style={styles.menuItem} onPress={() => setAutoOffMinutes(null)}>
         <Ionicons name="moon" size={22} color={sleepTimerMinutes ? "#1DB954" : "#b3b3b3"} />
         <Text style={styles.menuText}>
-          {sleepTimerMinutes ? `Auto Off Active (${sleepTimerMinutes} min)` : 'Turn Off Auto Off'}
+          {sleepTimerMinutes ? 'Turn Off Auto Off' : 'Auto Off is Off'}
         </Text>
         <Ionicons name="chevron-forward" size={18} color="#555" />
       </TouchableOpacity>
@@ -248,6 +255,30 @@ export default function ProfileScreen() {
                 <Text style={styles.modalBtnText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.modalBtn, styles.modalBtnPrimary]} onPress={saveEditedName}>
+                <Text style={[styles.modalBtnText, styles.modalBtnPrimaryText]}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      <Modal visible={showAutoOffModal} transparent animationType="fade" onRequestClose={() => setShowAutoOffModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Set Auto Off</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={autoOffInput}
+              onChangeText={setAutoOffInput}
+              placeholder="Minutes only (e.g. 45)"
+              placeholderTextColor="#777"
+              keyboardType="number-pad"
+              autoFocus
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.modalBtn} onPress={() => setShowAutoOffModal(false)}>
+                <Text style={styles.modalBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalBtn, styles.modalBtnPrimary]} onPress={saveCustomAutoOff}>
                 <Text style={[styles.modalBtnText, styles.modalBtnPrimaryText]}>Save</Text>
               </TouchableOpacity>
             </View>

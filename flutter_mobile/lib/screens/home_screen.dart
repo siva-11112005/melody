@@ -32,7 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _loadingExtra = false;
   List<Map<String, dynamic>> _dynamicSections = [];
 
-  static const int initialLoadSize = 16;
+  static const int initialLoadSize = 12;
   static const int pageSize = 8;
 
   static const List<Map<String, dynamic>> primarySections = [
@@ -122,7 +122,7 @@ class _HomeScreenState extends State<HomeScreen> {
     for (final artist in shuffled.take(2)) {
       dynamicSections.add({
         'title': 'Because you listened to $artist',
-        'icon': '✨',
+        'icon': Icons.auto_awesome,
         'queries': ['$artist tamil songs', 'best of $artist tamil', '$artist hits']
       });
     }
@@ -172,7 +172,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     for (int i = 0; i < queries.length; i++) {
       try {
-        final fetched = await _api.searchSongs(queries[i], page: 1, limit: 30);
+        final fetched = await _api.searchSongs(queries[i], page: 1, limit: 40);
         if (fetched.isEmpty) continue;
 
         final unique = _dedupe(fetched, seen);
@@ -305,8 +305,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final recently = context.watch<LibraryState>().recentlyPlayed;
 
     final orderedSections = <Map<String, dynamic>>[
-      ...primarySections,
       ..._dynamicSections,
+      ...primarySections,
       if (_extraLoaded) ...extraSections,
     ];
 
@@ -323,7 +323,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+                    padding: const EdgeInsets.fromLTRB(20, 60, 20, 15),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -337,7 +337,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   Container(
                                     padding: const EdgeInsets.all(8),
                                     decoration: BoxDecoration(
-                                      color: const Color(0xFF8B5CF6).withValues(alpha: 0.15),
+                                      color: const Color(0xFF1DB954).withValues(alpha: 0.12),
                                       borderRadius: BorderRadius.circular(12),
                                     ),
                                     child: const Icon(Icons.music_note, color: Color(0xFF1DB954), size: 24),
@@ -361,7 +361,6 @@ class _HomeScreenState extends State<HomeScreen> {
                             decoration: BoxDecoration(
                               color: const Color(0xFF202020),
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: const Color(0xFF2A2A2A)),
                             ),
                             child: const Icon(Icons.person_outline, color: Color(0xFF1DB954), size: 24),
                           ),
@@ -369,10 +368,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 5),
                   if (_loading)
                     const Padding(
-                      padding: EdgeInsets.all(20),
+                      padding: EdgeInsets.fromLTRB(20, 20, 20, 0),
                       child: CircularProgressIndicator(color: Color(0xFF1DB954)),
                     )
                   else
@@ -385,22 +384,21 @@ class _HomeScreenState extends State<HomeScreen> {
                     }),
                   if (!_extraLoaded && !_loadingExtra && !_loading)
                     Padding(
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
                       child: GestureDetector(
                         onTap: _loadExtraSections,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                          padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF181818),
+                            color: const Color(0xFF1a1a2e),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: const Color(0xFF2A2A2A)),
                           ),
                           child: const Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.expand_more, color: Color(0xFF1DB954)),
+                              Icon(Icons.expand_more, color: Color(0xFF1DB954), size: 20),
                               SizedBox(width: 8),
-                              Text('Show More Categories', style: TextStyle(color: Color(0xFF1DB954), fontWeight: FontWeight.w700)),
+                              Text('Show More Categories', style: TextStyle(color: Color(0xFF1DB954), fontWeight: FontWeight.w600, fontSize: 14)),
                             ],
                           ),
                         ),
@@ -408,7 +406,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   if (_loadingExtra)
                     const Padding(
-                      padding: EdgeInsets.all(16),
+                      padding: EdgeInsets.symmetric(vertical: 20),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
@@ -420,29 +418,23 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   if (recently.isNotEmpty)
                     Padding(
-                      padding: const EdgeInsets.only(top: 16, left: 16, right: 16),
+                      padding: const EdgeInsets.only(top: 18),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
                             children: [
-                              const Icon(Icons.history, color: Color(0xFF1DB954), size: 20),
+                              const Icon(Icons.history, color: Color(0xFF1DB954), size: 22),
                               const SizedBox(width: 8),
-                              const Text('Recently Played', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
+                              const Text('Recently Played', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 19)),
                             ],
                           ),
                           const SizedBox(height: 12),
-                          SizedBox(
-                            height: 218,
-                            child: ListView.builder(
-                              scrollDirection: Axis.horizontal,
-                              itemCount: recently.length,
-                              itemBuilder: (_, i) => _trackCard(recently[i], recently),
-                            ),
-                          ),
+                          SizedBox(height: 176, child: _horizontalTracks(recently, recently)),
                         ],
                       ),
                     ),
+                  const SizedBox(height: 150),
                 ],
               ),
             ),
@@ -456,37 +448,39 @@ class _HomeScreenState extends State<HomeScreen> {
     final controller = _controllerFor(title);
     _maybeAutoLoad(title);
 
+    final isLoading = !_sections.containsKey(title);
+
+    if (!isLoading && tracks.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
     return Padding(
-      padding: const EdgeInsets.only(top: 16, left: 16, right: 16),
+      padding: const EdgeInsets.only(top: 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              if (icon is IconData)
-                Icon(icon, color: const Color(0xFF1DB954), size: 22)
-              else if (icon is String)
-                Text(icon, style: const TextStyle(fontSize: 20)),
-              const SizedBox(width: 8),
-              Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 18)),
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (tracks.isEmpty)
-            const Padding(
-              padding: EdgeInsets.only(bottom: 8),
-              child: Text('No songs found', style: TextStyle(color: Colors.white54, fontSize: 16)),
-            )
-          else
-            SizedBox(
-              height: 218,
-              child: ListView.builder(
-                controller: controller,
-                scrollDirection: Axis.horizontal,
-                itemCount: tracks.length,
-                itemBuilder: (_, i) => _trackCard(tracks[i], tracks),
-              ),
+          Padding(
+            padding: const EdgeInsets.only(left: 20, right: 20, bottom: 14, top: 5),
+            child: Row(
+              children: [
+                if (icon is IconData)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: Icon(icon, color: const Color(0xFF1DB954), size: 22),
+                  )
+                else if (icon is String)
+                  const Padding(
+                    padding: EdgeInsets.only(right: 8),
+                    child: Icon(Icons.auto_awesome, color: Color(0xFF1DB954), size: 22),
+                  ),
+                Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 19)),
+              ],
             ),
+          ),
+          SizedBox(
+            height: 176,
+            child: _horizontalTracks(tracks, tracks, controller: controller),
+          ),
           if (loadingMore)
             const Padding(
               padding: EdgeInsets.only(top: 8),
@@ -495,12 +489,22 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF1DB954))),
                   SizedBox(width: 10),
-                  Text('Loading...', style: TextStyle(color: Colors.white54)),
+                  Text('Loading...', style: TextStyle(color: Color(0xFFb3b3b3), fontSize: 11)),
                 ],
               ),
             ),
         ],
       ),
+    );
+  }
+
+  Widget _horizontalTracks(List<Track> tracks, List<Track> contextQueue, {ScrollController? controller}) {
+    return ListView.builder(
+      controller: controller,
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.only(right: 20),
+      itemCount: tracks.length,
+      itemBuilder: (_, i) => _trackCard(tracks[i], contextQueue),
     );
   }
 
@@ -513,35 +517,44 @@ class _HomeScreenState extends State<HomeScreen> {
         await library.addRecentlyPlayed(track, token: auth.token);
       },
       child: Container(
-        width: 140,
-        margin: const EdgeInsets.only(right: 12),
-        decoration: BoxDecoration(
-          color: const Color(0xFF181818),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFF2A2A2A)),
-        ),
+        width: 130,
+        margin: const EdgeInsets.only(left: 20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: ClipRRect(
-                borderRadius: const BorderRadius.only(topLeft: Radius.circular(16), topRight: Radius.circular(16)),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: SizedBox(
+                width: 130,
+                height: 130,
                 child: track.artwork != null
-                    ? Image.network(track.artwork!, fit: BoxFit.cover, width: double.infinity,
-                        errorBuilder: (_, __, ___) => Container(color: const Color(0xFF282828), child: const Icon(Icons.music_note, color: Colors.white30)))
-                    : Container(color: const Color(0xFF282828), child: const Icon(Icons.music_note, color: Colors.white70)),
+                    ? Image.network(
+                        track.artwork!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(
+                          color: const Color(0xFF282828),
+                          child: const Icon(Icons.music_note, color: Colors.white70),
+                        ),
+                      )
+                    : Container(
+                        color: const Color(0xFF282828),
+                        child: const Icon(Icons.music_note, color: Colors.white70),
+                      ),
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.all(10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(TextUtils.cleanSongTitle(track.title), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13)),
-                  const SizedBox(height: 4),
-                  Text(TextUtils.cleanSongTitle(track.artist), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70, fontSize: 11)),
-                ],
-              ),
+            const SizedBox(height: 8),
+            Text(
+              TextUtils.cleanSongTitle(track.title),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              TextUtils.cleanSongTitle(track.artist),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: Color(0xFFb3b3b3), fontSize: 11),
             ),
           ],
         ),

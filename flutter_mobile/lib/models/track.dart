@@ -7,6 +7,7 @@ class Track {
   final int durationMs;
   final List<dynamic> downloadUrl;
   final String? localUri;
+  final String? fingerprint;
 
   const Track({
     required this.id,
@@ -17,6 +18,7 @@ class Track {
     this.durationMs = 0,
     this.downloadUrl = const [],
     this.localUri,
+    this.fingerprint,
   });
 
   factory Track.fromApi(Map<String, dynamic> json) {
@@ -66,6 +68,7 @@ class Track {
       durationMs: durationMs,
       downloadUrl: dl,
       localUri: json['localUri'] as String?,
+      fingerprint: json['fingerprint'] as String?,
     );
   }
 
@@ -78,6 +81,7 @@ class Track {
         'duration': durationMs,
         'downloadUrl': downloadUrl,
         'localUri': localUri,
+        'fingerprint': fingerprint,
       };
 
   factory Track.fromJson(Map<String, dynamic> json) => Track(
@@ -91,11 +95,13 @@ class Track {
             : int.tryParse('${json['duration'] ?? 0}') ?? 0,
         downloadUrl: (json['downloadUrl'] as List?) ?? const [],
         localUri: json['localUri'] as String?,
+        fingerprint: json['fingerprint'] as String?,
       );
 
   Track copyWith({
     String? url,
     String? localUri,
+    String? fingerprint,
   }) {
     return Track(
       id: id,
@@ -106,6 +112,7 @@ class Track {
       durationMs: durationMs,
       downloadUrl: downloadUrl,
       localUri: localUri ?? this.localUri,
+      fingerprint: fingerprint ?? this.fingerprint,
     );
   }
 }

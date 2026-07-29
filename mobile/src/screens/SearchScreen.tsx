@@ -10,7 +10,7 @@ import { usePlayerStore } from '../store/usePlayerStore';
 import { useLibraryStore } from '../store/useLibraryStore';
 import { API_URL } from '../config/api';
 import { cleanSongTitle, decodeHTMLEntities } from '../utils/textUtils';
-import { applyDownloadedUris } from '../services/downloadService';
+import { applyDownloadedUris, getDownloadedLocalUri } from '../services/downloadService';
 
 const DEFAULT_QUICK_SEARCHES = ['Anirudh', 'A.R. Rahman', 'Yuvan', 'Sid Sriram', 'Ilaiyaraaja', 'Hip Hop Tamizha'];
 const REMIX_NOISE_WORDS = /\b(remix|version|ver|live|karaoke|slowed|reverb|mashup|dj|mix|edit|cover)\b/gi;
@@ -64,6 +64,10 @@ function sanitizeQuery(value: string): string {
 }
 
 function mapSearchTrack(track: any) {
+  const image = track.image;
+  const artworkUrl = Array.isArray(image)
+    ? (image[image.length - 1]?.url || image[0]?.url || '')
+    : (typeof image === 'string' ? image : '');
   return {
     id: track.id,
     name: cleanSongTitle(track.name || track.title || ''),
@@ -71,7 +75,7 @@ function mapSearchTrack(track: any) {
     artists: track.artists || { primary: [{ name: cleanSongTitle(track.artist || track.primaryArtists || '') }] },
     primaryArtists: cleanSongTitle(track.primaryArtists || track.artist || track.artists?.primary?.[0]?.name || ''),
     image: track.image || [],
-    artwork: track.artwork || track.image?.[track.image?.length - 1]?.url || track.image?.[0]?.url || '',
+    artwork: track.artwork || artworkUrl,
     downloadUrl: track.downloadUrl || [],
     duration: track.duration || 0,
     url: track.url || track.audioUrl || track.downloadUrl?.[track.downloadUrl?.length - 1]?.url || '',
@@ -220,6 +224,11 @@ export default function SearchScreen() {
   const handlePlay = async (track: any) => {
     const baseQueue = dedupeTracks(results).map(toPlayerTrack);
     const immediateTrack = baseQueue.find(t => t.id === track.id) || toPlayerTrack(track);
+    const localUri = await getDownloadedLocalUri(String(immediateTrack.id));
+    if (localUri) {
+      immediateTrack.localUri = localUri;
+      immediateTrack.url = localUri;
+    }
     playTrack(immediateTrack, baseQueue);
     addRecentlyPlayed(immediateTrack);
 
@@ -294,7 +303,7 @@ export default function SearchScreen() {
   };
 
   const getTrackImage = (item: any) => {
-    // Get the best available image for each individual track
+    if (typeof item.image === 'string') return item.image;
     if (item.image && Array.isArray(item.image)) {
       return item.image[item.image.length - 1]?.url || item.image[1]?.url || item.image[0]?.url || null;
     }
@@ -484,7 +493,7 @@ export default function SearchScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#121212' },
   topBranding: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 20, paddingTop: 60, marginBottom: 5 },
-  logoContainer: { backgroundColor: 'rgba(139, 92, 246, 0.15)', padding: 8, borderRadius: 12 },
+  logoContainer: { backgroundColor: 'rgba(29, 185, 84, 0.12)', padding: 8, borderRadius: 12 },
   brandTitle: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
   header: { color: '#fff', fontSize: 28, fontWeight: 'bold', paddingHorizontal: 20, marginBottom: 15 },
   searchBar: {

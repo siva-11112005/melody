@@ -1,179 +1,110 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Audio } from 'expo-av';
-import { usePlayerStore } from '../store/usePlayerStore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import TrackPlayer from 'react-native-track-player';
 import { cleanSongTitle } from '../utils/textUtils';
+import { usePlayerStore } from '../store/usePlayerStore';
+import { loadQueueAndPlay, seekToMillis } from '../services/trackPlayerService';
 
 interface PlayerProps {
   onPress?: () => void;
 }
 
 export default function Player({ onPress }: PlayerProps) {
-  const { 
-    currentTrack, isPlaying, audioUrl, 
-    pause, resume, setPosition, setDuration, 
-    playNext, _seekRequested,
-    position, duration, sleepTimerMinutes, clearSleepTimer, autoPlayNextEnabled
+  const {
+    currentTrack, isPlaying, position, duration, queue, currentIndex, _seekRequested,
+    pause, resume, clearSleepTimer, sleepTimerMinutes,
   } = usePlayerStore();
   const [liked, setLiked] = useState(false);
-  const soundRef = useRef<Audio.Sound | null>(null);
-  const currentUrlRef = useRef<string | null>(null);
-  const loadingRef = useRef(false);
-  const mountedRef = useRef(true);
   const sleepTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const queueSignatureRef = useRef<string>('');
+  const currentIndexRef = useRef<number>(-1);
+  const stallCheckRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastProgressRef = useRef<{ position: number; at: number }>({ position: 0, at: Date.now() });
 
-  // Set audio mode once on mount
   useEffect(() => {
-    mountedRef.current = true;
-    Audio.setAudioModeAsync({
-      playsInSilentModeIOS: true,
-      staysActiveInBackground: true,
-      shouldDuckAndroid: true,
-    }).catch(() => {});
+    if (!currentTrack || !queue.length) return;
+    const signature = queue.map((item) => String(item.id || '')).join('|');
+    const nextIndex = Math.max(0, currentIndex);
 
-    return () => {
-      mountedRef.current = false;
-      if (soundRef.current) {
-        soundRef.current.unloadAsync().catch(() => {});
-        soundRef.current = null;
-      }
-      if (sleepTimeoutRef.current) {
-        clearTimeout(sleepTimeoutRef.current);
-        sleepTimeoutRef.current = null;
-      }
-    };
-  }, []);
-
-  // Handle audio URL changes - core playback logic
-  useEffect(() => {
-    if (!audioUrl) return;
-    if (currentUrlRef.current === audioUrl) return;
-
-    const loadAndPlay = async () => {
-      // Prevent concurrent loads
-      if (loadingRef.current) return;
-      loadingRef.current = true;
-
-      try {
-        // ALWAYS unload previous sound first to prevent double play
-        if (soundRef.current) {
-          try {
-            await soundRef.current.stopAsync();
-            await soundRef.current.unloadAsync();
-          } catch {}
-          soundRef.current = null;
-        }
-
-        // Check if this URL is still current (may have changed during unload)
-        if (!mountedRef.current) return;
-        
-        currentUrlRef.current = audioUrl;
-
-        const { sound } = await Audio.Sound.createAsync(
-          { uri: audioUrl },
-          { shouldPlay: true, progressUpdateIntervalMillis: 500 },
-          (status: any) => {
-            if (!mountedRef.current) return;
-            if (status.isLoaded) {
-              const durationMillis = status.durationMillis || 0;
-              const positionMillis = status.positionMillis || 0;
-
-              if (status.didJustFinish) {
-                // ── Auto-play next song immediately ──
-                // Reset the URL ref so the next song's URL will be accepted
-                currentUrlRef.current = null;
-                
-                const store = usePlayerStore.getState();
-                const hasNext = store.queue.length > 0 && store.currentIndex < store.queue.length - 1;
-                if (hasNext && store.autoPlayNextEnabled) {
-                  // Small delay to let the unload complete cleanly
-                  setTimeout(() => {
-                    if (mountedRef.current) {
-                      store.playNext();
-                    }
-                  }, 100);
-                  return;
-                }
-                // No next song — stop playing
-                store.setIsPlaying(false);
-                setPosition(0);
-                return;
-              }
-
-              const clampedPosition = durationMillis > 0
-                ? Math.min(positionMillis, durationMillis)
-                : positionMillis;
-              setPosition(clampedPosition);
-              if (durationMillis) setDuration(durationMillis);
-            }
-          }
-        );
-
-        // Verify URL hasn't changed during async load
-        if (currentUrlRef.current !== audioUrl || !mountedRef.current) {
-          await sound.unloadAsync().catch(() => {});
-          return;
-        }
-
-        soundRef.current = sound;
-      } catch (err) {
-        console.log('Audio load error:', err);
-        // If load fails, try to auto-skip to next track
-        currentUrlRef.current = null;
-        const store = usePlayerStore.getState();
-        const hasNext = store.queue.length > 0 && store.currentIndex < store.queue.length - 1;
-        if (hasNext && store.autoPlayNextEnabled) {
-          setTimeout(() => {
-            if (mountedRef.current) store.playNext();
-          }, 500);
-        }
-      } finally {
-        loadingRef.current = false;
-      }
-    };
-
-    loadAndPlay();
-  }, [audioUrl, autoPlayNextEnabled]);
-
-  // Handle seek requests
-  useEffect(() => {
-    if (_seekRequested !== null && soundRef.current) {
-      soundRef.current.setPositionAsync(_seekRequested).catch(() => {});
-      usePlayerStore.setState({ _seekRequested: null });
+    if (queueSignatureRef.current !== signature) {
+      queueSignatureRef.current = signature;
+      currentIndexRef.current = nextIndex;
+      loadQueueAndPlay(queue, nextIndex).catch(() => {});
+      return;
     }
+
+    if (currentIndexRef.current !== nextIndex) {
+      currentIndexRef.current = nextIndex;
+      TrackPlayer.skip(nextIndex).catch(() => {});
+    }
+  }, [queue, currentIndex, currentTrack?.id]);
+
+  useEffect(() => {
+    if (_seekRequested === null) return;
+    seekToMillis(_seekRequested).catch(() => {});
+    usePlayerStore.setState({ _seekRequested: null });
   }, [_seekRequested]);
 
-  // Sync play/pause
   useEffect(() => {
-    if (!soundRef.current) return;
-    if (isPlaying) {
-      soundRef.current.playAsync().catch(() => {});
-    } else {
-      soundRef.current.pauseAsync().catch(() => {});
+    if (!currentTrack) return;
+    const now = Date.now();
+    if (position > lastProgressRef.current.position + 300) {
+      lastProgressRef.current = { position, at: now };
     }
-  }, [isPlaying]);
+  }, [position, currentTrack?.id]);
 
-  // Auto-off sleep timer
+  useEffect(() => {
+    if (stallCheckRef.current) {
+      clearInterval(stallCheckRef.current);
+      stallCheckRef.current = null;
+    }
+    if (!isPlaying || !currentTrack) return;
+
+    stallCheckRef.current = setInterval(async () => {
+      const now = Date.now();
+      const stalledForMs = now - lastProgressRef.current.at;
+      if (stalledForMs < 8000) return;
+      try {
+        const currentSec = await TrackPlayer.getPosition();
+        await TrackPlayer.seekTo(Math.max(0, currentSec));
+        await TrackPlayer.play();
+        lastProgressRef.current = { position: Math.floor(currentSec * 1000), at: Date.now() };
+      } catch {}
+    }, 4000);
+
+    return () => {
+      if (stallCheckRef.current) {
+        clearInterval(stallCheckRef.current);
+        stallCheckRef.current = null;
+      }
+    };
+  }, [isPlaying, currentTrack?.id]);
+
   useEffect(() => {
     if (sleepTimeoutRef.current) {
       clearTimeout(sleepTimeoutRef.current);
       sleepTimeoutRef.current = null;
     }
     if (!sleepTimerMinutes || sleepTimerMinutes <= 0 || !isPlaying) return;
-
     sleepTimeoutRef.current = setTimeout(() => {
-      if (!mountedRef.current) return;
       pause();
       clearSleepTimer();
     }, sleepTimerMinutes * 60 * 1000);
   }, [sleepTimerMinutes, isPlaying, pause, clearSleepTimer]);
 
-  const handlePlayPause = () => {
-    if (isPlaying) pause();
-    else resume();
-  };
+  useEffect(() => {
+    const checkLiked = async () => {
+      if (!currentTrack) return;
+      try {
+        const data = await AsyncStorage.getItem('likedSongs');
+        const likedSongs = data ? JSON.parse(data) : [];
+        setLiked(likedSongs.some((s: any) => s.id === currentTrack.id));
+      } catch {}
+    };
+    checkLiked();
+  }, [currentTrack?.id]);
 
   const handleLike = async () => {
     if (!currentTrack) return;
@@ -189,23 +120,8 @@ export default function Player({ onPress }: PlayerProps) {
         await AsyncStorage.setItem('likedSongs', JSON.stringify(likedSongs));
         setLiked(true);
       }
-    } catch (error) {
-      console.error('Like error:', error);
-    }
+    } catch {}
   };
-
-  // Check liked state when track changes
-  useEffect(() => {
-    const checkLiked = async () => {
-      if (!currentTrack) return;
-      try {
-        const data = await AsyncStorage.getItem('likedSongs');
-        const likedSongs = data ? JSON.parse(data) : [];
-        setLiked(likedSongs.some((s: any) => s.id === currentTrack.id));
-      } catch {}
-    };
-    checkLiked();
-  }, [currentTrack?.id]);
 
   if (!currentTrack) return null;
 
@@ -219,9 +135,9 @@ export default function Player({ onPress }: PlayerProps) {
         <View style={[styles.progressBarFill, { width: `${progressPercent}%` }]} />
       </View>
       <View style={styles.content}>
-        <Image 
-          source={{ uri: currentTrack.artwork || 'https://placehold.co/45x45/282828/fff?text=♪' }} 
-          style={styles.artwork} 
+        <Image
+          source={{ uri: currentTrack.artwork || 'https://placehold.co/45x45/282828/fff?text=?' }}
+          style={styles.artwork}
         />
         <View style={styles.info}>
           <Text style={styles.title} numberOfLines={1}>{displayTitle}</Text>
@@ -229,10 +145,10 @@ export default function Player({ onPress }: PlayerProps) {
         </View>
         <View style={styles.controls}>
           <TouchableOpacity style={styles.button} onPress={handleLike}>
-            <Ionicons name={liked ? "heart" : "heart-outline"} size={22} color={liked ? "#1DB954" : "#b3b3b3"} />
+            <Ionicons name={liked ? 'heart' : 'heart-outline'} size={22} color={liked ? '#1DB954' : '#b3b3b3'} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.playButton} onPress={handlePlayPause} activeOpacity={0.7}>
-            <Ionicons name={isPlaying ? "pause" : "play"} size={24} color="#000" />
+          <TouchableOpacity style={styles.playButton} onPress={isPlaying ? pause : resume} activeOpacity={0.7}>
+            <Ionicons name={isPlaying ? 'pause' : 'play'} size={24} color="#000" />
           </TouchableOpacity>
         </View>
       </View>
@@ -249,9 +165,7 @@ const styles = StyleSheet.create({
   },
   progressBarBg: { height: 2, backgroundColor: '#444' },
   progressBarFill: { height: '100%', backgroundColor: '#1DB954' },
-  content: {
-    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10,
-  },
+  content: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10 },
   artwork: { width: 46, height: 46, borderRadius: 6, backgroundColor: '#121212' },
   info: { flex: 1, marginLeft: 12, marginRight: 8 },
   title: { color: '#fff', fontSize: 14, fontWeight: '600' },
