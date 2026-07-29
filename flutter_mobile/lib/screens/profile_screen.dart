@@ -330,7 +330,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Center(
                 child: Padding(
                   padding: const EdgeInsets.only(top: 30),
-                  child: Text('Tamil Music App v1.0.0', style: TextStyle(color: Colors.white.withValues(alpha: 0.27), fontSize: 12)),
+                  child: Text('Tamil Music App v1.0.2', style: TextStyle(color: Colors.white.withValues(alpha: 0.27), fontSize: 12)),
                 ),
               ),
             ],
