@@ -198,7 +198,7 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
       isScrollControlled: true,
       backgroundColor: const Color(0xFF121212),
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(25))),
-      builder: (_) {
+      builder: (sheetContext) {
         return ListView(
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
           children: [
@@ -207,7 +207,7 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 GestureDetector(
-                  onTap: () => Navigator.pop(context),
+                  onTap: () => Navigator.pop(sheetContext),
                   child: const Row(
                     children: [
                       Icon(Icons.keyboard_arrow_down, color: Colors.white, size: 28),
@@ -220,7 +220,7 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
                   child: Text('Up Next', textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
                 ),
                 GestureDetector(
-                  onTap: () => Navigator.pop(context),
+                  onTap: () => Navigator.pop(sheetContext),
                   child: const Text('Done', style: TextStyle(color: Color(0xFF1DB954), fontSize: 14, fontWeight: FontWeight.bold)),
                 ),
               ],
@@ -288,6 +288,7 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
     final isDownloaded = track.localUri != null || _saved;
     if (_savedTrackId != track.id) {
       _savedTrackId = track.id;
+      _saved = false;
       _syncSavedStatus(track);
     }
 

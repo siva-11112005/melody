@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:just_audio_background/just_audio_background.dart';
 import 'package:provider/provider.dart';
 
 import 'screens/artist_pick_screen.dart';
@@ -17,7 +18,13 @@ import 'state/player_state.dart';
 import 'widgets/app_backdrop.dart';
 import 'widgets/mini_player.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await JustAudioBackground.init(
+    androidNotificationChannelId: 'com.melody.music.channel.audio',
+    androidNotificationChannelName: 'Tamil Music Playback',
+    androidNotificationOngoing: true,
+  );
   runApp(const MelodyFlutterApp());
 }
 
@@ -85,6 +92,7 @@ class MelodyFlutterApp extends StatelessWidget {
           ),
         ),
         routes: {
+          '/': (_) => const _AuthGate(),
           '/login': (_) => const LoginScreen(),
           '/signup': (_) => const SignupScreen(),
           '/language': (_) => const LanguageScreen(),
@@ -157,29 +165,33 @@ class _MainTabsState extends State<_MainTabs> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Stack(
-        children: [
-          IndexedStack(index: currentIndex, children: tabs),
-          MiniPlayer(onTap: () => Navigator.pushNamed(context, '/full-player')),
-        ],
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: currentIndex,
-        onTap: (i) => setState(() => currentIndex = i),
-        backgroundColor: const Color(0xFF181818),
-        selectedItemColor: const Color(0xFF1DB954),
-        unselectedItemColor: Colors.white70,
-        selectedLabelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-        unselectedLabelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
-        showSelectedLabels: true,
-        showUnselectedLabels: true,
-        type: BottomNavigationBarType.fixed,
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home_outlined), activeIcon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.search), label: 'Search'),
-          BottomNavigationBarItem(icon: Icon(Icons.library_music_outlined), activeIcon: Icon(Icons.library_music), label: 'Library'),
-          BottomNavigationBarItem(icon: Icon(Icons.person_outline), activeIcon: Icon(Icons.person), label: 'Profile'),
-        ],
+      body: IndexedStack(index: currentIndex, children: tabs),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            MiniPlayer(onTap: () => Navigator.pushNamed(context, '/full-player')),
+            BottomNavigationBar(
+              currentIndex: currentIndex,
+              onTap: (i) => setState(() => currentIndex = i),
+              backgroundColor: const Color(0xFF181818),
+              selectedItemColor: const Color(0xFF1DB954),
+              unselectedItemColor: Colors.white70,
+              selectedLabelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+              unselectedLabelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
+              showSelectedLabels: true,
+              showUnselectedLabels: true,
+              type: BottomNavigationBarType.fixed,
+              items: const [
+                BottomNavigationBarItem(icon: Icon(Icons.home_outlined), activeIcon: Icon(Icons.home), label: 'Home'),
+                BottomNavigationBarItem(icon: Icon(Icons.search), label: 'Search'),
+                BottomNavigationBarItem(icon: Icon(Icons.library_music_outlined), activeIcon: Icon(Icons.library_music), label: 'Library'),
+                BottomNavigationBarItem(icon: Icon(Icons.person_outline), activeIcon: Icon(Icons.person), label: 'Profile'),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

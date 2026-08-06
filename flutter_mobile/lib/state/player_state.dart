@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart' as ja;
+import 'package:just_audio_background/just_audio_background.dart';
 
 import '../models/track.dart';
 import '../services/download_service.dart';
@@ -10,6 +11,8 @@ class PlayerState extends ChangeNotifier {
   final ja.AudioPlayer _audioPlayer = ja.AudioPlayer();
   StreamSubscription<Duration>? _positionSub;
   StreamSubscription<ja.PlayerState>? _playerStateSub;
+  Timer? _positionNotifyTimer;
+  bool _disposed = false;
 
   Track? currentTrack;
   List<Track> queue = [];
@@ -21,25 +24,22 @@ class PlayerState extends ChangeNotifier {
   bool shuffleEnabled = false;
   bool repeatEnabled = false;
   int? sleepTimerMinutes;
-  bool autoPlayNextEnabled = false;
+  bool autoPlayNextEnabled = true;
 
   Timer? _sleepTimer;
   final DownloadService _downloadService = DownloadService();
+  final Map<String, Track?> _downloadedTrackCache = {};
 
   PlayerState() {
     _positionSub = _audioPlayer.positionStream.listen((p) {
       positionMs = p.inMilliseconds;
-      notifyListeners();
+      _schedulePositionNotify();
     });
 
     _playerStateSub = _audioPlayer.playerStateStream.listen((state) {
       isPlaying = state.playing;
       if (state.processingState == ja.ProcessingState.completed) {
-        if (autoPlayNextEnabled || shuffleEnabled || repeatEnabled) {
-          playNext();
-        } else {
-          pause();
-        }
+        playNext();
       }
       notifyListeners();
     });
@@ -50,6 +50,19 @@ class PlayerState extends ChangeNotifier {
     });
   }
 
+  void _schedulePositionNotify() {
+    if (_positionNotifyTimer?.isActive == true) return;
+    _positionNotifyTimer = Timer(const Duration(milliseconds: 200), () {
+      if (!_disposed) {
+        notifyListeners();
+      }
+    });
+  }
+
+  String _downloadLookupKey(Track track) {
+    return track.id.isNotEmpty ? track.id : '${track.title}_${track.artist}'.toLowerCase();
+  }
+
   Future<void> playTrack(Track track, {List<Track>? contextQueue}) async {
     queue = contextQueue ?? queue;
     if (queue.isEmpty) {
@@ -58,9 +71,12 @@ class PlayerState extends ChangeNotifier {
     currentIndex = queue.indexWhere((e) => e.id == track.id);
     if (currentIndex < 0) currentIndex = 0;
 
+    final cacheKey = _downloadLookupKey(track);
+    final cachedDownloaded = _downloadedTrackCache.containsKey(cacheKey) ? _downloadedTrackCache[cacheKey] : null;
     final downloadedTrack = track.localUri != null
         ? track
-        : await _downloadService.findDownloadedTrackFor(track);
+        : cachedDownloaded ?? await _downloadService.findDownloadedTrackFor(track);
+    _downloadedTrackCache[cacheKey] = downloadedTrack;
     final playableTrack = downloadedTrack ?? track;
 
     currentTrack = playableTrack;
@@ -71,11 +87,26 @@ class PlayerState extends ChangeNotifier {
     final url = playableTrack.localUri ?? playableTrack.url;
     if (url == null || url.isEmpty) return;
 
+    final mediaItem = MediaItem(
+      id: playableTrack.id.isNotEmpty ? playableTrack.id : url,
+      album: playableTrack.album ?? 'Tamil Music',
+      title: playableTrack.title,
+      artist: playableTrack.artist,
+      artUri: playableTrack.artwork != null && playableTrack.artwork!.isNotEmpty
+          ? Uri.tryParse(playableTrack.artwork!)
+          : null,
+      duration: playableTrack.durationMs > 0 ? Duration(milliseconds: playableTrack.durationMs) : null,
+    );
+
     try {
       if (playableTrack.localUri != null) {
-        await _audioPlayer.setAudioSource(ja.AudioSource.file(playableTrack.localUri!));
+        await _audioPlayer.setAudioSource(
+          ja.AudioSource.file(playableTrack.localUri!, tag: mediaItem),
+        );
       } else {
-        await _audioPlayer.setAudioSource(ja.AudioSource.uri(Uri.parse(url)));
+        await _audioPlayer.setAudioSource(
+          ja.AudioSource.uri(Uri.parse(url), tag: mediaItem),
+        );
       }
       await _audioPlayer.play();
     } catch (e) {
@@ -127,8 +158,11 @@ class PlayerState extends ChangeNotifier {
       return;
     }
     if (currentIndex >= queue.length - 1) {
-      if (repeatEnabled && queue.isNotEmpty) {
-        await playTrack(queue.first, contextQueue: queue);
+      if (repeatEnabled || autoPlayNextEnabled) {
+        if (queue.isNotEmpty) {
+          currentIndex = 0;
+          await playTrack(queue[0], contextQueue: queue);
+        }
       } else {
         await pause();
       }
@@ -183,7 +217,9 @@ class PlayerState extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     _sleepTimer?.cancel();
+    _positionNotifyTimer?.cancel();
     _positionSub?.cancel();
     _playerStateSub?.cancel();
     _audioPlayer.dispose();

@@ -127,12 +127,28 @@ function scoreCandidate(query: string, item: any) {
   return score;
 }
 
+function isLowQualityTrack(item: any) {
+  const title = normalizeQuery(item?.name || item?.title || '');
+  const durationSec = Number(item?.duration || item?.more_info?.duration || 0);
+  if (durationSec > 0 && durationSec < 60) return true;
+  if (/\b(promo|teaser|trailer|preview|clip|reel|shorts?|ringtone|status|interview|dialogue|speech|announcement|bgm|theme)\b/i.test(title)) {
+    return true;
+  }
+  return false;
+}
+
 function getResultKey(item: any) {
-  const title = normalizeSongTitle(item?.name || item?.title || '');
+  const title = normalizeSongTitle(item?.name || item?.title || item?.song || '');
   const artist = normalizeQuery(item?.artists?.primary?.[0]?.name || item?.primaryArtists || item?.artist || '').replace(/[^a-z0-9]/g, '');
   const album = normalizeQuery(item?.album || '').replace(/[^a-z0-9]/g, '');
-  const idPart = item?.id ? String(item.id) : '';
-  return `${title}__${artist}__${album}__${idPart}`;
+  const lang = normalizeQuery(item?.language || item?.more_info?.language || '').replace(/[^a-z0-9]/g, '');
+  const durationSec = Number(item?.duration || item?.more_info?.duration || 0);
+  const durBucket = durationSec > 0 ? Math.round(durationSec / 6) : 0;
+
+  if (title && (artist || album)) {
+    return `${title}__${artist}__${album}__${lang}__${durBucket}`;
+  }
+  return item?.id ? String(item.id) : `${title}_${lang}_${durBucket}`;
 }
 
 function normalizeMediaUrl(url: string) {
@@ -176,6 +192,9 @@ function normalizeTrackRecord(source: any, fallbackTitle?: string) {
       'Unknown',
     ),
   );
+  const album = decodeHTMLEntities(String(source?.album || ''));
+  const rawLang = source?.language || source?.more_info?.language || '';
+  const language = rawLang ? rawLang.charAt(0).toUpperCase() + rawLang.slice(1).toLowerCase() : '';
   const artwork =
     source?.artwork ||
     (Array.isArray(source?.image)
@@ -196,6 +215,8 @@ function normalizeTrackRecord(source: any, fallbackTitle?: string) {
     song: title,
     artist,
     primaryArtists: artist,
+    album,
+    language,
     artwork,
     image: Array.isArray(source?.image)
       ? source.image
@@ -237,7 +258,8 @@ export async function jiosaavnSearch(query: string, limit: number = 10, page: nu
     if (!response.data?.results) return [];
 
     // Map to clean format and attach the best playback URL for every client.
-    return response.data.results.map((song: any) => normalizeTrackRecord({
+    return response.data.results
+      .map((song: any) => normalizeTrackRecord({
       id: song.id,
       name: song.title || song.song || 'Unknown',
       duration: parseInt(song.more_info?.duration || song.duration || '0'),
@@ -256,7 +278,8 @@ export async function jiosaavnSearch(query: string, limit: number = 10, page: nu
       language: song.language || song.more_info?.language || '',
       year: song.year || song.more_info?.year || '',
       album: decodeHTMLEntities(song.more_info?.album || ''),
-    }));
+    }))
+      .filter((track: any) => !isLowQualityTrack(track));
   } catch (error: any) {
     console.error('JioSaavn direct search error:', error?.message);
     return [];
@@ -541,7 +564,7 @@ router.get('/trending', async (req, res) => {
     const unique = allTracks.filter(t => {
       Object.assign(t, normalizeTrackRecord(t));
       const durationSec = Number(t?.duration || 0);
-      if (durationSec > 0 && durationSec < 60) return false; // remove short clips/teasers
+      if (isLowQualityTrack(t)) return false;
       if (!t?.id) return false;
       if (seen.has(t.id)) return false;
       seen.add(t.id);

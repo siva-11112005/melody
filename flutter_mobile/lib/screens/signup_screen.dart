@@ -56,7 +56,7 @@ class _SignupScreenState extends State<SignupScreen> {
 
                   const Text('Create Account', style: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
-                  const Text('Join Melodify and start listening', style: TextStyle(color: Color(0xFFb3b3b3), fontSize: 16)),
+                  const Text('Join Tamil Music and start listening', style: TextStyle(color: Color(0xFFb3b3b3), fontSize: 16)),
                   const SizedBox(height: 40),
 
                   // Email field

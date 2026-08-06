@@ -20,9 +20,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final DownloadService _downloadService = DownloadService();
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _autoOffController = TextEditingController();
+  final TextEditingController _currentPasswordController = TextEditingController();
+  final TextEditingController _newPasswordController = TextEditingController();
+  final TextEditingController _confirmPasswordController = TextEditingController();
 
   bool _showEditNameModal = false;
   bool _showAutoOffModal = false;
+  bool _showPasswordModal = false;
   int _downloadCount = 0;
   List<String> _languages = [];
   List<String> _favoriteArtists = [];
@@ -41,6 +45,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void dispose() {
     _nameController.dispose();
     _autoOffController.dispose();
+    _currentPasswordController.dispose();
+    _newPasswordController.dispose();
+    _confirmPasswordController.dispose();
     super.dispose();
   }
 
@@ -141,6 +148,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() => _showAutoOffModal = true);
   }
 
+  Future<void> _changePassword() async {
+    final currentPassword = _currentPasswordController.text.trim();
+    final newPassword = _newPasswordController.text.trim();
+    final confirmPassword = _confirmPasswordController.text.trim();
+
+    if (currentPassword.isEmpty || newPassword.isEmpty || confirmPassword.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill all password fields')));
+      return;
+    }
+    if (newPassword.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('New password must be at least 6 characters')));
+      return;
+    }
+    if (newPassword != confirmPassword) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('New passwords do not match')));
+      return;
+    }
+
+    try {
+      await context.read<AuthState>().changePassword(currentPassword, newPassword);
+      if (!mounted) return;
+      setState(() => _showPasswordModal = false);
+      _currentPasswordController.clear();
+      _newPasswordController.clear();
+      _confirmPasswordController.clear();
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Password updated')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthState>();
@@ -173,7 +212,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       child: const Icon(Icons.music_note, color: Color(0xFF1DB954), size: 24),
                     ),
                     const SizedBox(width: 10),
-                    const Text('Tamil Music', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                    const Text('Profile', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
                   ],
                 ),
               ),
@@ -314,11 +353,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _menuItem(
                 icon: Icons.vpn_key_outlined,
                 label: 'Change Password',
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Password change UI can be connected to your backend auth endpoint.')),
-                  );
-                },
+                onTap: _openPasswordModal,
               ),
               _menuItem(
                 icon: Icons.logout,
@@ -330,7 +365,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Center(
                 child: Padding(
                   padding: const EdgeInsets.only(top: 30),
-                  child: Text('Tamil Music App v1.0.2', style: TextStyle(color: Colors.white.withValues(alpha: 0.27), fontSize: 12)),
+                  child: Text('v1.0.2', style: TextStyle(color: Colors.white.withValues(alpha: 0.27), fontSize: 12)),
                 ),
               ),
             ],
@@ -338,6 +373,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         if (_showEditNameModal) _editNameModal(),
         if (_showAutoOffModal) _autoOffModal(),
+        if (_showPasswordModal) _passwordModal(),
       ],
     );
   }
@@ -345,6 +381,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void _openEditNameModal() {
     _nameController.text = (context.read<AuthState>().user?['name'] ?? '').toString();
     setState(() => _showEditNameModal = true);
+  }
+
+  void _openPasswordModal() {
+    _currentPasswordController.clear();
+    _newPasswordController.clear();
+    _confirmPasswordController.clear();
+    setState(() => _showPasswordModal = true);
   }
 
   Widget _editNameModal() {
@@ -495,6 +538,90 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _passwordModal() {
+    return Positioned.fill(
+      child: Material(
+        color: Colors.black.withValues(alpha: 0.55),
+        child: Center(
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 24),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1f1f1f),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFF2f2f2f)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Change Password', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 12),
+                _passwordField(controller: _currentPasswordController, hint: 'Current password'),
+                const SizedBox(height: 10),
+                _passwordField(controller: _newPasswordController, hint: 'New password'),
+                const SizedBox(height: 10),
+                _passwordField(controller: _confirmPasswordController, hint: 'Confirm new password'),
+                const SizedBox(height: 14),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    GestureDetector(
+                      onTap: () => setState(() => _showPasswordModal = false),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 14),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF2a2a2a),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Text('Cancel', style: TextStyle(color: Color(0xFFDDDDDD), fontSize: 14, fontWeight: FontWeight.w600)),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    GestureDetector(
+                      onTap: _changePassword,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 14),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1DB954),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Text('Save', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _passwordField({required TextEditingController controller, required String hint}) {
+    return Container(
+      height: 44,
+      decoration: BoxDecoration(
+        color: const Color(0xFF2a2a2a),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFF3a3a3a)),
+      ),
+      child: TextField(
+        controller: controller,
+        obscureText: true,
+        style: const TextStyle(color: Colors.white),
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: const TextStyle(color: Color(0xFF777777)),
+          border: InputBorder.none,
+          filled: false,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12),
         ),
       ),
     );

@@ -90,7 +90,10 @@ Color _parseColor(String hex) {
 }
 
 String _getInitials(String name) {
-  return name.split(' ').map((w) => w.isNotEmpty ? w[0] : '').join('').toUpperCase().substring(0, name.split(' ').length >= 2 ? 2 : 1);
+  final parts = name.trim().split(RegExp(r'\s+')).where((part) => part.isNotEmpty).toList();
+  if (parts.isEmpty) return '?';
+  final initials = parts.map((part) => part[0]).join().toUpperCase();
+  return initials.substring(0, initials.length >= 2 ? 2 : 1);
 }
 
 class ArtistPickScreen extends StatefulWidget {
@@ -113,7 +116,7 @@ class _ArtistPickScreenState extends State<ArtistPickScreen> {
   }
 
   void _loadArtists() {
-    final languages = (ModalRoute.of(context)?.settings.arguments as List?)?.cast<String>() ?? ['english', 'hindi'];
+    final languages = (ModalRoute.of(context)?.settings.arguments as List?)?.cast<String>() ?? ['tamil'];
     final seen = <String>{};
     final all = <Map<String, String>>[];
     for (final lang in languages) {
@@ -231,7 +234,7 @@ class _ArtistPickScreenState extends State<ArtistPickScreen> {
                     ),
                     GestureDetector(
                       onTap: selectedArtists.length < 3 ? null : () async {
-                        final languages = (ModalRoute.of(context)?.settings.arguments as List?)?.cast<String>() ?? ['Tamil'];
+                        final languages = (ModalRoute.of(context)?.settings.arguments as List?)?.cast<String>() ?? ['tamil'];
                         final auth = context.read<AuthState>();
                         final navigator = Navigator.of(context);
                         await auth.completeOnboarding(languages, selectedArtists.toList());

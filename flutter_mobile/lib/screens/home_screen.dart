@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -7,6 +9,7 @@ import '../state/auth_state.dart';
 import '../state/library_state.dart';
 import '../state/player_state.dart';
 import '../widgets/app_backdrop.dart';
+import '../widgets/expo_skeleton.dart';
 import '../utils/text_utils.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -32,8 +35,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _loadingExtra = false;
   List<Map<String, dynamic>> _dynamicSections = [];
 
-  static const int initialLoadSize = 12;
-  static const int pageSize = 8;
+  static const int initialLoadSize = 8;
+  static const int pageSize = 6;
 
   static const List<Map<String, dynamic>> primarySections = [
     {'title': 'Trending in Tamil', 'icon': Icons.local_fire_department, 'queries': ['trending tamil songs', 'top tamil hits 2024', 'popular tamil songs']},
@@ -87,20 +90,29 @@ class _HomeScreenState extends State<HomeScreen> {
       _sectionLoadingMore.clear();
     });
 
-    for (final section in primarySections) {
-      await _loadInitialSection(
-        title: section['title'] as String,
-        queries: (section['queries'] as List).cast<String>(),
-      );
-      await Future.delayed(const Duration(milliseconds: 60));
-    }
-
-    await _generateDynamicSections();
+    await _loadSectionBatch(primarySections.take(2).toList());
 
     if (mounted) {
       setState(() => _loading = false);
-      Future.delayed(const Duration(seconds: 2), _loadExtraSections);
+      unawaited(_loadHomeBackground());
     }
+  }
+
+  Future<void> _loadHomeBackground() async {
+    await _generateDynamicSections();
+    await _loadSectionBatch(primarySections.skip(2).toList());
+    await Future.delayed(const Duration(milliseconds: 300));
+    await _loadSectionBatch(extraSections);
+  }
+
+  Future<void> _loadSectionBatch(List<Map<String, dynamic>> sections) async {
+    final tasks = sections.map((section) {
+      return _loadInitialSection(
+        title: section['title'] as String,
+        queries: (section['queries'] as List).cast<String>(),
+      );
+    }).toList();
+    await Future.wait(tasks);
   }
 
   Future<void> _generateDynamicSections() async {
@@ -166,24 +178,25 @@ class _HomeScreenState extends State<HomeScreen> {
     _sectionHasMore[title] = true;
     _sectionLoadingMore[title] = false;
 
-    final all = <Track>[];
     final seen = <String>{};
-    int usedQueryIndex = 0;
-
-    for (int i = 0; i < queries.length; i++) {
-      try {
-        final fetched = await _api.searchSongs(queries[i], page: 1, limit: 40);
-        if (fetched.isEmpty) continue;
-
-        final unique = _dedupe(fetched, seen);
-        if (unique.isNotEmpty) {
-          all.addAll(unique);
-          usedQueryIndex = i;
+    final fetchedBatches = await Future.wait(
+      queries.map((query) async {
+        try {
+          return await _api.searchSongs(query, page: 1, limit: 12);
+        } catch (_) {
+          return const <Track>[];
         }
-        if (all.length >= initialLoadSize) break;
-      } catch (_) {
-        // Keep trying other query variants.
+      }),
+    );
+    final all = <Track>[];
+    int usedQueryIndex = 0;
+    for (int i = 0; i < fetchedBatches.length; i++) {
+      final unique = _dedupe(fetchedBatches[i], seen);
+      if (unique.isNotEmpty && all.isEmpty) {
+        usedQueryIndex = i;
       }
+      all.addAll(unique);
+      if (all.length >= initialLoadSize) break;
     }
 
     all.shuffle();
@@ -226,30 +239,28 @@ class _HomeScreenState extends State<HomeScreen> {
       ...current.map((t) => t.id.isNotEmpty ? t.id : '${t.title}_${t.artist}'.toLowerCase()),
     };
 
-    int attempts = 0;
     int queryIndex = _sectionQueryIndex[title] ?? 0;
     int page = _sectionPage[title] ?? 1;
-    List<Track> appended = const [];
-
-    while (attempts < queries.length && appended.isEmpty) {
-      final qIndex = (queryIndex + attempts) % queries.length;
-      final pageToUse = attempts == 0 ? page + 1 : 1;
-
-      try {
-        final fetched = await _api.searchSongs(queries[qIndex], page: pageToUse, limit: 40);
-        final unique = _dedupe(fetched, seen);
-        if (unique.isNotEmpty) {
-          unique.shuffle();
-          appended = unique.take(pageSize).toList();
-          queryIndex = qIndex;
-          page = pageToUse;
-          break;
+    final fetchedBatches = await Future.wait(
+      queries.map((query) async {
+        try {
+          return await _api.searchSongs(query, page: page + 1, limit: 12);
+        } catch (_) {
+          return const <Track>[];
         }
-      } catch (_) {
-        // Try next variant.
-      }
+      }),
+    );
 
-      attempts += 1;
+    final appended = <Track>[];
+    for (int i = 0; i < fetchedBatches.length; i++) {
+      final unique = _dedupe(fetchedBatches[i], seen);
+      if (unique.isNotEmpty) {
+        unique.shuffle();
+        appended.addAll(unique.take(pageSize));
+        queryIndex = i;
+        page = page + 1;
+        if (appended.length >= pageSize) break;
+      }
     }
 
     if (!mounted) return;
@@ -370,9 +381,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 5),
                   if (_loading)
-                    const Padding(
-                      padding: EdgeInsets.fromLTRB(20, 20, 20, 0),
-                      child: CircularProgressIndicator(color: Color(0xFF1DB954)),
+                    Column(
+                      children: [
+                        ExpoSkeleton.sectionShimmer(),
+                        ExpoSkeleton.sectionShimmer(),
+                        ExpoSkeleton.sectionShimmer(),
+                      ],
                     )
                   else
                     ...orderedSections.map((section) {

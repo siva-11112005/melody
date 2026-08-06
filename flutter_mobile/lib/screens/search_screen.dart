@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -11,6 +12,7 @@ import '../state/auth_state.dart';
 import '../state/library_state.dart';
 import '../state/player_state.dart';
 import '../utils/text_utils.dart';
+import '../widgets/expo_skeleton.dart';
 
 const List<String> _defaultQuickSearches = [
   'Anirudh',
@@ -22,6 +24,7 @@ const List<String> _defaultQuickSearches = [
 ];
 
 final _remixNoiseWords = RegExp(r'\b(remix|version|ver|live|karaoke|slowed|reverb|mashup|dj|mix|edit|cover)\b', caseSensitive: false);
+final _lowQualityTitleWords = RegExp(r'\b(promo|teaser|trailer|preview|clip|reel|shorts?|ringtone|status|interview|dialogue|speech|announcement|bgm|theme)\b', caseSensitive: false);
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -46,6 +49,7 @@ class _SearchScreenState extends State<SearchScreen> {
   bool _searched = false;
   bool _showPlaylistSheet = false;
   bool _loadingPlaylists = false;
+  Timer? _suggestDebounce;
 
   Track? _selectedTrack;
 
@@ -58,6 +62,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   @override
   void dispose() {
+    _suggestDebounce?.cancel();
     _controller.dispose();
     _playlistNameController.dispose();
     super.dispose();
@@ -111,10 +116,17 @@ class _SearchScreenState extends State<SearchScreen> {
     return TextUtils.cleanSongTitle(track.artist).toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
   }
 
+  bool _isLowQualityTrack(Track track) {
+    final title = TextUtils.cleanSongTitle(track.title).toLowerCase();
+    if (track.durationMs > 0 && track.durationMs < 60000) return true;
+    return _lowQualityTitleWords.hasMatch(title);
+  }
+
   List<Track> _dedupeTracks(List<Track> tracks) {
     final seen = <String>{};
     final output = <Track>[];
     for (final track in tracks) {
+      if (_isLowQualityTrack(track)) continue;
       final key = '${_songKey(track)}:${_artistKey(track)}';
       if (key == ':') continue;
       if (seen.contains(key)) continue;
@@ -159,16 +171,14 @@ class _SearchScreenState extends State<SearchScreen> {
       q,
       '$q tamil full song',
       '$q audio song',
-      '$q jukebox',
-      '${q.split(' ').take(4).join(' ')} tamil',
     ].toSet().toList();
 
     final merged = <Track>[];
     for (final variant in variants) {
       try {
-        final tracks = await _api.searchSongs(variant, limit: 25);
+        final tracks = await _api.searchSongs(variant, limit: 18);
         merged.addAll(tracks);
-        if (_dedupeTracks(merged).length >= 40) {
+        if (_dedupeTracks(merged).length >= 28) {
           break;
         }
       } catch (_) {}
@@ -187,31 +197,39 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   Future<void> _loadSuggestions(String text) async {
-    if (text.trim().length < 2) {
+    _suggestDebounce?.cancel();
+    final query = text.trim();
+    if (query.length < 2) {
+      if (!mounted) return;
       setState(() => _suggestions = []);
       return;
     }
-    try {
-      final suggestions = await _api.suggest(text);
-      if (!mounted) return;
-      setState(() => _suggestions = suggestions.take(6).toList());
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _suggestions = []);
-    }
+
+    _suggestDebounce = Timer(const Duration(milliseconds: 250), () async {
+      try {
+        final suggestions = await _api.suggest(query);
+        if (!mounted || _controller.text.trim() != query) return;
+        setState(() => _suggestions = suggestions.take(5).toList());
+      } catch (_) {
+        if (!mounted || _controller.text.trim() != query) return;
+        setState(() => _suggestions = []);
+      }
+    });
   }
 
-  Future<void> _loadPlaylists() async {
+  Future<List<Map<String, dynamic>>> _loadPlaylists() async {
     final token = context.read<AuthState>().token;
-    if (token == null || token.isEmpty) return;
+    if (token == null || token.isEmpty) return const [];
     setState(() => _loadingPlaylists = true);
     try {
       final items = await _api.getPlaylists(token);
-      if (!mounted) return;
+      if (!mounted) return const [];
       setState(() => _playlists = items);
+      return items;
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted) return const [];
       setState(() => _playlists = []);
+      return const [];
     } finally {
       if (mounted) setState(() => _loadingPlaylists = false);
     }
@@ -225,7 +243,7 @@ class _SearchScreenState extends State<SearchScreen> {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Added to playlist!')));
   }
 
-  Future<void> _createPlaylistAndAdd(Track track) async {
+  Future<void> _createPlaylistAndAdd(BuildContext sheetContext, Track track) async {
     final token = context.read<AuthState>().token;
     if (token == null || token.isEmpty) return;
     final name = _playlistNameController.text.trim();
@@ -237,7 +255,7 @@ class _SearchScreenState extends State<SearchScreen> {
       await _api.addTrackToPlaylist(token, playlistId, track);
     }
     if (!mounted) return;
-    Navigator.pop(context);
+    Navigator.pop(sheetContext);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Created "$name"')));
   }
 
@@ -261,10 +279,8 @@ class _SearchScreenState extends State<SearchScreen> {
       builder: (sheetContext) {
         return _PlaylistSheet(
           selectedTrack: track,
-          playlists: _playlists,
-          loading: _loadingPlaylists,
           playlistNameController: _playlistNameController,
-          onCreateAndAdd: () => _createPlaylistAndAdd(track),
+          onCreateAndAdd: () => _createPlaylistAndAdd(sheetContext, track),
           onAddToPlaylist: (playlistId) => _addToPlaylist(playlistId, track),
           onRefresh: _loadPlaylists,
         );
@@ -535,9 +551,14 @@ class _SearchScreenState extends State<SearchScreen> {
             ],
           ],
           if (_loading)
-            const Padding(
-              padding: EdgeInsets.only(top: 50),
-              child: Center(child: CircularProgressIndicator(color: Color(0xFF1DB954))),
+            Column(
+              children: [
+                ExpoSkeleton.listTile(),
+                ExpoSkeleton.listTile(),
+                ExpoSkeleton.listTile(),
+                ExpoSkeleton.listTile(),
+                ExpoSkeleton.listTile(),
+              ],
             )
           else if (_searched) ...[
             if (_results.isEmpty)
@@ -569,8 +590,6 @@ class _SearchScreenState extends State<SearchScreen> {
 class _PlaylistSheet extends StatefulWidget {
   const _PlaylistSheet({
     required this.selectedTrack,
-    required this.playlists,
-    required this.loading,
     required this.playlistNameController,
     required this.onCreateAndAdd,
     required this.onAddToPlaylist,
@@ -578,22 +597,33 @@ class _PlaylistSheet extends StatefulWidget {
   });
 
   final Track selectedTrack;
-  final List<Map<String, dynamic>> playlists;
-  final bool loading;
   final TextEditingController playlistNameController;
   final Future<void> Function() onCreateAndAdd;
   final Future<void> Function(String playlistId) onAddToPlaylist;
-  final Future<void> Function() onRefresh;
+  final Future<List<Map<String, dynamic>>> Function() onRefresh;
 
   @override
   State<_PlaylistSheet> createState() => _PlaylistSheetState();
 }
 
 class _PlaylistSheetState extends State<_PlaylistSheet> {
+  List<Map<String, dynamic>> _playlists = [];
+  bool _loading = true;
+
   @override
   void initState() {
     super.initState();
-    widget.onRefresh();
+    _refreshPlaylists();
+  }
+
+  Future<void> _refreshPlaylists() async {
+    setState(() => _loading = true);
+    final playlists = await widget.onRefresh();
+    if (!mounted) return;
+    setState(() {
+      _playlists = playlists;
+      _loading = false;
+    });
   }
 
   @override
@@ -674,12 +704,12 @@ class _PlaylistSheetState extends State<_PlaylistSheet> {
             ],
           ),
           const SizedBox(height: 15),
-          if (widget.loading)
+          if (_loading)
             const Padding(
               padding: EdgeInsets.all(20),
               child: Center(child: CircularProgressIndicator(color: Color(0xFF1DB954))),
             )
-          else if (widget.playlists.isEmpty)
+          else if (_playlists.isEmpty)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 30),
               child: Text('No playlists yet. Create one above!', style: TextStyle(color: Color(0xFF666666), fontSize: 14), textAlign: TextAlign.center),
@@ -688,9 +718,9 @@ class _PlaylistSheetState extends State<_PlaylistSheet> {
             SizedBox(
               height: 250,
               child: ListView.builder(
-                itemCount: widget.playlists.length,
+                itemCount: _playlists.length,
                 itemBuilder: (context, index) {
-                  final playlist = widget.playlists[index];
+                  final playlist = _playlists[index];
                   final playlistId = (playlist['_id'] ?? playlist['id'])?.toString() ?? '';
                   final tracks = (playlist['tracks'] as List?) ?? const [];
                   return GestureDetector(

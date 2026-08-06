@@ -61,6 +61,13 @@ class AuthState extends ChangeNotifier {
     await _api.signup(email, password);
   }
 
+  Future<void> changePassword(String currentPassword, String newPassword) async {
+    if (token == null || token!.isEmpty) {
+      throw Exception('Please log in again');
+    }
+    await _api.changePassword(token!, currentPassword, newPassword);
+  }
+
   Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('token');
