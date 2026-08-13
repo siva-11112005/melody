@@ -42,16 +42,11 @@ class _SearchScreenState extends State<SearchScreen> {
   List<Track> _results = [];
   List<String> _suggestions = [];
   List<String> _quickSearches = _defaultQuickSearches;
-  List<Map<String, dynamic>> _playlists = [];
   Set<String> _downloadedIds = {};
 
   bool _loading = false;
   bool _searched = false;
-  bool _showPlaylistSheet = false;
-  bool _loadingPlaylists = false;
   Timer? _suggestDebounce;
-
-  Track? _selectedTrack;
 
   @override
   void initState() {
@@ -220,18 +215,12 @@ class _SearchScreenState extends State<SearchScreen> {
   Future<List<Map<String, dynamic>>> _loadPlaylists() async {
     final token = context.read<AuthState>().token;
     if (token == null || token.isEmpty) return const [];
-    setState(() => _loadingPlaylists = true);
     try {
       final items = await _api.getPlaylists(token);
       if (!mounted) return const [];
-      setState(() => _playlists = items);
       return items;
     } catch (_) {
-      if (!mounted) return const [];
-      setState(() => _playlists = []);
       return const [];
-    } finally {
-      if (mounted) setState(() => _loadingPlaylists = false);
     }
   }
 
@@ -267,10 +256,7 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   void _openPlaylistSheet(Track track) {
-    _selectedTrack = track;
     _playlistNameController.clear();
-    _loadPlaylists();
-    setState(() => _showPlaylistSheet = true);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -285,11 +271,7 @@ class _SearchScreenState extends State<SearchScreen> {
           onRefresh: _loadPlaylists,
         );
       },
-    ).whenComplete(() {
-      if (mounted) {
-        setState(() => _showPlaylistSheet = false);
-      }
-    });
+    );
   }
 
   Widget _buildTrackItem(Track track) {

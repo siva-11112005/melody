@@ -25,28 +25,15 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
   List<Map<String, dynamic>> playlists = [];
   bool loadingPlaylists = false;
   String? expandedPlaylistId;
-  int _lastTabIndex = 0;
   final TextEditingController _playlistNameController = TextEditingController();
   final TextEditingController _playlistPromptController = TextEditingController();
-  static final RegExp _lowQualityTitleWords = RegExp(
-    r'\b(promo|teaser|trailer|preview|clip|reel|shorts?|ringtone|status|interview|dialogue|speech|announcement|bgm|theme)\b',
-    caseSensitive: false,
-  );
 
   @override
   void initState() {
     super.initState();
     _tabs = TabController(length: 4, vsync: this);
     _tabs.addListener(() {
-      if (!mounted) return;
-      setState(() {});
-      if (_tabs.index == _lastTabIndex) return;
-      _lastTabIndex = _tabs.index;
-      if (_tabs.index == 0) {
-        _loadPlaylists();
-      } else if (_tabs.index == 2) {
-        _loadDownloads();
-      }
+      if (mounted) setState(() {});
     });
     _loadDownloads();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -83,56 +70,7 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
     }
   }
 
-  Future<void> _refreshPlaylists() async {
-    await _loadPlaylists();
-  }
 
-  Future<void> _createPlaylist() async {
-    final name = _playlistNameController.text.trim();
-    if (name.isEmpty) return;
-    final token = context.read<AuthState>().token;
-    if (token == null || token.isEmpty) return;
-    await _api.createPlaylist(token, name);
-    _playlistNameController.clear();
-    await _loadPlaylists();
-  }
-
-  Future<void> _createSmartPlaylist({required String mode}) async {
-    final token = context.read<AuthState>().token;
-    if (token == null || token.isEmpty) return;
-
-    final name = _playlistNameController.text.trim();
-    if (name.isEmpty) return;
-
-    final created = await _api.createPlaylist(token, name);
-    final playlistId = (created['_id'] ?? created['id'])?.toString();
-    if (playlistId == null || playlistId.isEmpty) return;
-
-    List<Track> tracks = const [];
-    if (mode == 'ai') {
-      final prompt = _playlistPromptController.text.trim();
-      if (prompt.isEmpty) return;
-      tracks = await _api.generatePlaylist(prompt);
-    } else if (mode == 'csv') {
-      final csv = _playlistPromptController.text.trim();
-      if (csv.isEmpty) return;
-      final names = csv.split(RegExp(r'[\n,]')).map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
-      tracks = await _api.resolveSongs(names);
-    } else if (mode == 'search') {
-      final query = _playlistPromptController.text.trim();
-      if (query.isEmpty) return;
-      tracks = await _api.searchSongs(query, limit: 20);
-    }
-
-    tracks = tracks.where(_isUsefulTrack).toList();
-
-    for (final track in tracks) {
-      try {
-        await _api.addTrackToPlaylist(token, playlistId, track);
-      } catch (_) {}
-    }
-    await _loadPlaylists();
-  }
 
   Future<void> _deletePlaylist(String id) async {
     final token = context.read<AuthState>().token;
@@ -179,7 +117,6 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
           Container(
             padding: const EdgeInsets.only(left: 20, right: 20, top: 60, bottom: 5),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Container(
                   padding: const EdgeInsets.all(8),
@@ -201,11 +138,6 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
                   ),
-                ),
-                IconButton(
-                  onPressed: _refreshPlaylists,
-                  icon: const Icon(Icons.refresh, color: Color(0xFF1DB954)),
-                  tooltip: 'Refresh playlists',
                 ),
               ],
             ),
@@ -254,12 +186,6 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
     );
   }
 
-  bool _isUsefulTrack(Track track) {
-    final title = TextUtils.cleanSongTitle(track.title).toLowerCase();
-    if (track.durationMs > 0 && track.durationMs < 60000) return false;
-    return !_lowQualityTitleWords.hasMatch(title);
-  }
-
   Widget _buildTab(String label, int index, IconData icon) {
     final isActive = _tabs.index == index;
     return GestureDetector(
@@ -304,7 +230,7 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
     final createOptionWidth = (MediaQuery.of(context).size.width - 60) / 4;
 
     return RefreshIndicator(
-      onRefresh: _refreshPlaylists,
+      onRefresh: _loadPlaylists,
       color: const Color(0xFF1DB954),
       child: ListView(
         padding: const EdgeInsets.only(bottom: 120),
@@ -359,65 +285,120 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
           else if (playlists.isEmpty)
             const Center(child: Padding(padding: EdgeInsets.all(40), child: Column(children: [Icon(Icons.list_alt, size: 60, color: Colors.white10), SizedBox(height: 12), Text('No playlists yet. Pull down to refresh!', style: TextStyle(color: Colors.white38)) ])))
           else
-            ...playlists.map((playlist) {
-              final id = (playlist['_id'] ?? playlist['id'])?.toString() ?? '';
-              final tracks = (playlist['tracks'] as List?) ?? const [];
-              final expanded = expandedPlaylistId == id;
-              return Container(
-                decoration: const BoxDecoration(
-                  border: Border(bottom: BorderSide(color: Color(0xFF222222), width: 0.5)),
-                ),
-                child: Column(
-                  children: [
-                    InkWell(
-                      onTap: () => setState(() => expandedPlaylistId = expanded ? null : id),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text((playlist['name'] ?? 'Playlist').toString(), style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                                  const SizedBox(height: 4),
-                                  Text('${tracks.length} songs', style: const TextStyle(color: Color(0xFF888888), fontSize: 12)),
-                                ],
-                              ),
+          ...playlists.map((playlist) {
+            final id = (playlist['_id'] ?? playlist['id'])?.toString() ?? '';
+            final tracks = (playlist['tracks'] as List?) ?? const [];
+            final expanded = expandedPlaylistId == id;
+            return Container(
+              decoration: const BoxDecoration(
+                border: Border(bottom: BorderSide(color: Color(0xFF222222), width: 0.5)),
+              ),
+              child: Column(
+                children: [
+                  InkWell(
+                    onTap: () => setState(() => expandedPlaylistId = expanded ? null : id),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text((playlist['name'] ?? 'Playlist').toString(), style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                                const SizedBox(height: 4),
+                                Text('${tracks.length} songs', style: const TextStyle(color: Color(0xFF888888), fontSize: 12)),
+                              ],
                             ),
-                            Icon(expanded ? Icons.expand_less : Icons.expand_more, color: const Color(0xFF888888), size: 20),
-                            const SizedBox(width: 10),
-                            GestureDetector(
-                              onTap: id.isEmpty ? null : () => _deletePlaylist(id),
-                              child: Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFFF6B6B).withValues(alpha: 0.1),
-                                  border: Border.all(color: const Color(0xFFFF6B6B).withValues(alpha: 0.2)),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: const Icon(Icons.delete, color: Color(0xFFFF6B6B), size: 16),
+                          ),
+                          Icon(expanded ? Icons.expand_less : Icons.expand_more, color: const Color(0xFF888888), size: 20),
+                          const SizedBox(width: 10),
+                          GestureDetector(
+                            onTap: id.isEmpty ? null : () => _deletePlaylist(id),
+                            child: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFF6B6B).withValues(alpha: 0.1),
+                                border: Border.all(color: const Color(0xFFFF6B6B).withValues(alpha: 0.2)),
+                                borderRadius: BorderRadius.circular(10),
                               ),
+                              child: const Icon(Icons.delete, color: Color(0xFFFF6B6B), size: 16),
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ),
-                    if (expanded)
-                      Container(
-                        color: const Color(0xFF181818),
-                        child: Column(
-                          children: [
-                            if (tracks.isEmpty)
-                              const Padding(padding: EdgeInsets.all(20), child: Text('No songs yet. Add some below!', style: TextStyle(color: Colors.white24, fontSize: 13)))
-                            else
-                              ...tracks.map((item) {
-                                final track = Track.fromJson(Map<String, dynamic>.from(item as Map));
-                                return ListTile(
-                                  dense: true,
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-                                  leading: ClipRRect(
-                                    borderRadius: BorderRadius.circular(6),
+                  ),
+
+                  if (expanded)
+                    Container(
+                      color: const Color(0xFF181818),
+                      child: Column(
+                        children: [
+                          if (tracks.isEmpty)
+                            const Padding(padding: EdgeInsets.all(20), child: Text('No songs yet. Add some below!', style: TextStyle(color: Colors.white24, fontSize: 13)))
+                          else
+                            ...tracks.map((item) {
+                              final track = Track.fromJson(Map<String, dynamic>.from(item as Map));
+                              return ListTile(
+                                dense: true,
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                                leading: ClipRRect(
+                                  borderRadius: BorderRadius.circular(6),
+                                  child: track.artwork != null 
+                                    ? Image.network(track.artwork!, width: 44, height: 44, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _artworkPlaceholder()) 
+                                    : _artworkPlaceholder(),
+                                ),
+                                title: Text(TextUtils.cleanSongTitle(track.title), style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                subtitle: Text(TextUtils.cleanSongTitle(track.artist), style: const TextStyle(color: Color(0xFFb3b3b3), fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons.remove_circle_outline, color: Color(0xFFFF6B6B), size: 18),
+                                      onPressed: () => _removeTrackFromPlaylist(id, track.id),
+                                    ),
+                                    const Icon(Icons.play_circle_fill, color: Color(0xFF1DB954), size: 24),
+                                  ],
+                                ),
+                                onTap: () async {
+                                  final auth = context.read<AuthState>();
+                                  final trackList = tracks.map((t) => Track.fromJson(Map<String, dynamic>.from(t as Map))).toList();
+                                  await context.read<PlayerState>().playTrack(track, contextQueue: trackList);
+                                  await context.read<LibraryState>().addRecentlyPlayed(track, token: auth.token);
+                                },
+                              );
+                            }),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 15),
+                            child: Row(
+                              children: [
+                                _buildInlineAddBtn(Icons.search, 'Search', const Color(0xFF6c5ce7), () => _showCreateDialog('search', targetPlaylistId: id)),
+                                const SizedBox(width: 8),
+                                _buildInlineAddBtn(Icons.list, 'Names', const Color(0xFFe17055), () => _showCreateDialog('csv', targetPlaylistId: id)),
+                                const SizedBox(width: 8),
+                                _buildInlineAddBtn(Icons.auto_awesome, 'AI Add', const Color(0xFFfd79a8), () => _showCreateDialog('ai', targetPlaylistId: id)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildExpoCreateBtn({required IconData icon, required String label, required Color color, required double width, required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: SizedBox(
+        width: width,
+        child: Column(
           children: [
             Container(
               width: 50, height: 50,
@@ -452,80 +433,7 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
     );
   }
 
-  Widget _buildCreateButton({
-    required IconData icon,
-    required String label,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: const Color(0xFF181818),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFF2A2A2A)),
-        ),
-        child: Column(
-          children: [
-            Container(
-              width: 50,
-              height: 50,
-              decoration: BoxDecoration(
-                color: color,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Icon(icon, color: Colors.white, size: 24),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              style: const TextStyle(
-                color: Color(0xFFCCCCCC),
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
-  Widget _buildAddSongButton({
-    required IconData icon,
-    required String label,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: Colors.white, size: 16),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   Widget _trackList(
     List<Track> tracks, {
@@ -673,12 +581,11 @@ class _CreatePlaylistModalState extends State<_CreatePlaylistModal> {
     setState(() => _loading = true);
     try {
       final tracks = await _api.searchSongs(q);
-      if (!mounted) return;
       setState(() => _results = tracks);
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Search failed: $e')));
     } finally {
-      if (mounted) setState(() => _loading = false);
+      setState(() => _loading = false);
     }
   }
 
@@ -694,7 +601,6 @@ class _CreatePlaylistModalState extends State<_CreatePlaylistModal> {
         final names = input.split(RegExp(r'[\n,]')).map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
         tracks = await _api.resolveSongs(names);
       }
-      if (!mounted) return;
       setState(() {
         _results = tracks;
         _selectedTracks = List.from(tracks);
@@ -703,7 +609,7 @@ class _CreatePlaylistModalState extends State<_CreatePlaylistModal> {
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to find songs: $e')));
     } finally {
-      if (mounted) setState(() => _loading = false);
+      setState(() => _loading = false);
     }
   }
 

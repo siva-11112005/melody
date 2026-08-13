@@ -24,38 +24,7 @@ class Track {
     this.localUri,
     this.fingerprint,
   });
-  factory Track.fromApi(Map<String, dynamic> json) {
-    final image = (json['image'] as List?) ?? const [];
-    final dl = (json['downloadUrl'] as List?) ?? const [];
-    final rawDuration = (json['duration'] is int)
-        ? json['duration'] as int
-        : int.tryParse('${json['duration'] ?? 0}') ?? 0;
-    final durationMs = rawDuration < 1000 ? rawDuration * 1000 : rawDuration;
 
-    String? bestImage = json['artwork'] as String?;
-    if (image.isNotEmpty) {
-      final last = image.last;
-      if (last is Map && last['url'] is String) {
-        bestImage = last['url'] as String;
-      }
-    }
-
-    String? bestUrl = json['url'] as String?;
-    if (dl.isNotEmpty) {
-      final last = dl.last;
-      if (last is Map && last['url'] is String) {
-        bestUrl = last['url'] as String;
-      }
-    }
-
-    final artists = json['artists'] as Map<String, dynamic>?;
-    final primary = artists?['primary'] as List?;
-    String resolvedArtist = (json['artist'] ?? '').toString();
-    if (primary != null && primary.isNotEmpty) {
-      final names = primary
-          .whereType<Map>()
-          .map((e) => (e['name'] ?? '').toString())
-          .where((e) => e.isNotEmpty)
   factory Track.fromApi(Map<String, dynamic> json) {
     final image = (json['image'] as List?) ?? const [];
     final dl = (json['downloadUrl'] as List?) ?? const [];
@@ -98,8 +67,8 @@ class Track {
       id: (json['id'] ?? DateTime.now().millisecondsSinceEpoch.toString()).toString(),
       title: ((json['name'] ?? json['title']) ?? 'Unknown').toString(),
       artist: resolvedArtist.isEmpty ? 'Unknown' : resolvedArtist,
-      album: json['album'] as String?,
-      language: json['language'] as String?,
+      album: (json['album'] ?? '').toString(),
+      language: (json['language'] ?? '').toString(),
       artwork: bestImage,
       url: bestUrl,
       durationMs: durationMs,
@@ -148,6 +117,8 @@ class Track {
       id: id,
       title: title,
       artist: artist,
+      album: album,
+      language: language,
       artwork: artwork,
       url: url ?? this.url,
       durationMs: durationMs,
