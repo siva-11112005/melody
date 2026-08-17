@@ -102,17 +102,26 @@ class PlayerState extends ChangeNotifier {
       if (playableTrack.localUri != null) {
         await _audioPlayer.setAudioSource(
           ja.AudioSource.file(playableTrack.localUri!, tag: mediaItem),
+          preload: true,
         );
       } else {
         await _audioPlayer.setAudioSource(
           ja.AudioSource.uri(Uri.parse(url), tag: mediaItem),
+          preload: true,
         );
       }
-      await _audioPlayer.play();
+      _audioPlayer.play();
     } catch (e) {
       debugPrint('Playback error: $e');
       playNext();
     }
+  }
+
+  Future<void> stopPlayback() async {
+    await _audioPlayer.stop();
+    isPlaying = false;
+    currentTrack = null;
+    notifyListeners();
   }
 
   void setSleepTimer(int minutes) {
