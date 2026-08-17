@@ -110,11 +110,21 @@ function scoreCandidate(query: string, item: any) {
   const title = normalizeQuery(item?.name || item?.title || '');
   const artist = normalizeQuery(item?.artists?.primary?.[0]?.name || item?.primaryArtists || item?.artist || '');
   const album = normalizeQuery(item?.album || '');
+  const lang = normalizeQuery(item?.language || item?.more_info?.language || '');
   const haystack = `${title} ${artist} ${album}`;
   const qNorm = normalizeQuery(query);
   const tokens = getTokens(qNorm);
 
   let score = 0;
+
+  // Language match bonus: prioritized selected language
+  if (qNorm.includes('tamil') && lang.includes('tamil')) score += 25;
+  else if (qNorm.includes('telugu') && lang.includes('telugu')) score += 25;
+  else if (qNorm.includes('hindi') && lang.includes('hindi')) score += 25;
+  else if (qNorm.includes('malayalam') && lang.includes('malayalam')) score += 25;
+  else if (qNorm.includes('kannada') && lang.includes('kannada')) score += 25;
+  else if (qNorm.includes('english') && lang.includes('english')) score += 25;
+
   if (title.includes(qNorm)) score += 10;
   if (album.includes(qNorm)) score += 8;
   if (qNorm.includes(title) && title.length > 3) score += 4;
@@ -520,10 +530,10 @@ router.get('/trending', async (req, res) => {
       return res.json(cache.get(cacheKey));
     }
 
-    let langs = ['hindi', 'english'];
+    let langs = ['tamil'];
     if (languages && typeof languages === 'string') {
       langs = languages.split(',').map(l => l.trim().toLowerCase()).filter(Boolean);
-      if (langs.length === 0) langs = ['hindi'];
+      if (langs.length === 0) langs = ['tamil'];
     }
 
     const queries = langs
@@ -559,13 +569,20 @@ router.get('/trending', async (req, res) => {
       }
     }));
 
-    // Deduplicate
+    // Deduplicate & strict language filter
     const seen = new Set();
     const unique = allTracks.filter(t => {
       Object.assign(t, normalizeTrackRecord(t));
-      const durationSec = Number(t?.duration || 0);
       if (isLowQualityTrack(t)) return false;
       if (!t?.id) return false;
+
+      // Filter out non-matching languages if language tag exists
+      if (t.language && typeof t.language === 'string' && t.language.trim().length > 0) {
+        const trackLang = t.language.toLowerCase();
+        const matchesAny = langs.some(l => trackLang.includes(l));
+        if (!matchesAny) return false;
+      }
+
       if (seen.has(t.id)) return false;
       seen.add(t.id);
       return true;

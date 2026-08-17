@@ -31,6 +31,13 @@ class PlayerState extends ChangeNotifier {
   final Map<String, Track?> _downloadedTrackCache = {};
 
   PlayerState() {
+    _audioPlayer.setAndroidAudioAttributes(
+      const ja.AndroidAudioAttributes(
+        contentType: ja.AndroidAudioContentType.music,
+        usage: ja.AndroidAudioUsage.media,
+      ),
+    );
+
     _positionSub = _audioPlayer.positionStream.listen((p) {
       positionMs = p.inMilliseconds;
       _schedulePositionNotify();
