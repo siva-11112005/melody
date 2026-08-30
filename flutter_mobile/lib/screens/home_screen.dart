@@ -154,25 +154,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _loadExtraSections() async {
-    if (!mounted || _extraLoaded || _loadingExtra) return;
-    setState(() => _loadingExtra = true);
 
-    for (final section in extraSections) {
-      await _loadInitialSection(
-        title: section['title'] as String,
-        queries: (section['queries'] as List).cast<String>(),
-      );
-      await Future.delayed(const Duration(milliseconds: 100));
-    }
-
-    if (mounted) {
-      setState(() {
-        _extraLoaded = true;
-        _loadingExtra = false;
-      });
-    }
-  }
 
   Future<void> _loadInitialSection({required String title, required List<String> queries}) async {
     _sectionQueries[title] = queries;
