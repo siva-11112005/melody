@@ -161,12 +161,12 @@ class _SearchScreenState extends State<SearchScreen> {
       _controller.text = q;
     }
 
-    final variants = <String>[
+    final variants = <String>{
       _enrichQuery(q),
       q,
       '$q tamil full song',
       '$q audio song',
-    ].toSet().toList();
+    }.toList();
 
     final merged = <Track>[];
     for (final variant in variants) {
@@ -238,14 +238,15 @@ class _SearchScreenState extends State<SearchScreen> {
     final name = _playlistNameController.text.trim();
     if (name.isEmpty) return;
 
+    final nav = Navigator.of(sheetContext);
+    final messenger = ScaffoldMessenger.of(context);
     final created = await _api.createPlaylist(token, name);
     final playlistId = (created['_id'] ?? created['id'])?.toString();
     if (playlistId != null && playlistId.isNotEmpty) {
       await _api.addTrackToPlaylist(token, playlistId, track);
     }
-    if (!mounted) return;
-    Navigator.pop(sheetContext);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Created "$name"')));
+    nav.pop();
+    messenger.showSnackBar(SnackBar(content: Text('Created "$name"')));
   }
 
   Future<void> _handlePlay(Track track) async {
@@ -290,7 +291,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 child: Image.network(
                   track.artwork ?? 'https://placehold.co/52x52/282828/fff?text=music',
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
+                  errorBuilder: (ctx, e, st) => Container(
                     color: const Color(0xFF282828),
                     child: const Icon(Icons.music_note, color: Colors.white70, size: 24),
                   ),
@@ -709,10 +710,9 @@ class _PlaylistSheetState extends State<_PlaylistSheet> {
                     onTap: playlistId.isEmpty
                         ? null
                         : () async {
+                            final nav = Navigator.of(context);
                             await widget.onAddToPlaylist(playlistId);
-                            if (mounted) {
-                              Navigator.pop(context);
-                            }
+                            nav.pop();
                           },
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 12),

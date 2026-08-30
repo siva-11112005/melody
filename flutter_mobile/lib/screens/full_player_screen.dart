@@ -174,10 +174,10 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
                         onTap: () async {
                           final id = (playlist['_id'] ?? playlist['id'])?.toString();
                           if (id != null && id.isNotEmpty) {
+                            final nav = Navigator.of(sheetContext);
                             final messenger = ScaffoldMessenger.of(context);
                             await _addToPlaylist(sheetContext, id, track);
-                            if (!mounted) return;
-                            Navigator.pop(sheetContext);
+                            nav.pop();
                             messenger.showSnackBar(const SnackBar(content: Text('Added to playlist')));
                           }
                         },
@@ -467,10 +467,9 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
                           label: 'Share',
                           onTap: () async {
                             final text = 'Listen to "${TextUtils.cleanSongTitle(track.title)}" by ${TextUtils.cleanSongTitle(track.artist)}';
+                            final messenger = ScaffoldMessenger.of(context);
                             await Clipboard.setData(ClipboardData(text: text));
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Song info copied')));
-                            }
+                            messenger.showSnackBar(const SnackBar(content: Text('Song info copied')));
                           },
                         ),
                         _buildPlayerAction(

@@ -31,8 +31,6 @@ class _HomeScreenState extends State<HomeScreen> {
   final Map<String, ScrollController> _sectionControllers = {};
 
   bool _loading = true;
-  bool _extraLoaded = false;
-  bool _loadingExtra = false;
   List<Map<String, dynamic>> _dynamicSections = [];
 
   static const int initialLoadSize = 8;
@@ -79,8 +77,6 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadHome() async {
     setState(() {
       _loading = true;
-      _extraLoaded = false;
-      _loadingExtra = false;
       _dynamicSections = [];
       _sections.clear();
       _sectionQueries.clear();
@@ -105,7 +101,6 @@ class _HomeScreenState extends State<HomeScreen> {
       _loadSectionBatch(primarySections.skip(2).toList()),
       _loadSectionBatch(extraSections),
     ]);
-    if (mounted) setState(() => _extraLoaded = true);
   }
 
   Future<void> _loadSectionBatch(List<Map<String, dynamic>> sections) async {
@@ -485,7 +480,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ? Image.network(
                         track.artwork!,
                         fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
+                        errorBuilder: (ctx, e, st) => Container(
                           color: const Color(0xFF282828),
                           child: const Icon(Icons.music_note, color: Colors.white70),
                         ),

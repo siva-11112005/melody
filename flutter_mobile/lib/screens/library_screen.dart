@@ -345,9 +345,9 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
                                 contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
                                 leading: ClipRRect(
                                   borderRadius: BorderRadius.circular(6),
-                                  child: track.artwork != null 
-                                    ? Image.network(track.artwork!, width: 44, height: 44, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _artworkPlaceholder()) 
-                                    : _artworkPlaceholder(),
+                                  child: track.artwork != null
+                                      ? Image.network(track.artwork!, width: 44, height: 44, fit: BoxFit.cover, errorBuilder: (ctx, e, st) => _artworkPlaceholder())
+                                      : _artworkPlaceholder(),
                                 ),
                                 title: Text(TextUtils.cleanSongTitle(track.title), style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w500), maxLines: 1, overflow: TextOverflow.ellipsis),
                                 subtitle: Text(TextUtils.cleanSongTitle(track.artist), style: const TextStyle(color: Color(0xFFb3b3b3), fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -363,9 +363,11 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
                                 ),
                                 onTap: () async {
                                   final auth = context.read<AuthState>();
+                                  final player = context.read<PlayerState>();
+                                  final library = context.read<LibraryState>();
                                   final trackList = tracks.map((t) => Track.fromJson(Map<String, dynamic>.from(t as Map))).toList();
-                                  await context.read<PlayerState>().playTrack(track, contextQueue: trackList);
-                                  await context.read<LibraryState>().addRecentlyPlayed(track, token: auth.token);
+                                  await player.playTrack(track, contextQueue: trackList);
+                                  await library.addRecentlyPlayed(track, token: auth.token);
                                 },
                               );
                             }),
@@ -476,7 +478,7 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
             ClipRRect(
               borderRadius: BorderRadius.circular(6),
               child: track.artwork != null
-                  ? Image.network(track.artwork!, width: 48, height: 48, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _artworkPlaceholder())
+                  ? Image.network(track.artwork!, width: 48, height: 48, fit: BoxFit.cover, errorBuilder: (ctx, e, st) => _artworkPlaceholder())
                   : _artworkPlaceholder(),
             ),
             const SizedBox(width: 14),
@@ -744,13 +746,16 @@ class _CreatePlaylistModalState extends State<_CreatePlaylistModal> {
                   final isSel = _selectedTracks.any((e) => e.id == t.id);
                   return ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: ClipRRect(borderRadius: BorderRadius.circular(6), child: t.artwork != null ? Image.network(t.artwork!, width: 44, height: 44, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _artworkPlaceholder()) : _artworkPlaceholder()),
+                    leading: ClipRRect(borderRadius: BorderRadius.circular(6), child: t.artwork != null ? Image.network(t.artwork!, width: 44, height: 44, fit: BoxFit.cover, errorBuilder: (ctx, e, st) => _artworkPlaceholder()) : _artworkPlaceholder()),
                     title: Text(TextUtils.cleanSongTitle(t.title), style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
                     subtitle: Text(TextUtils.cleanSongTitle(t.artist), style: const TextStyle(color: Colors.white70, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
                     trailing: Icon(isSel ? Icons.check_circle : Icons.add_circle_outline, color: isSel ? const Color(0xFF1DB954) : Colors.white30),
                     onTap: () => setState(() {
-                      if (isSel) _selectedTracks.removeWhere((e) => e.id == t.id);
-                      else _selectedTracks.add(t);
+                      if (isSel) {
+                        _selectedTracks.removeWhere((e) => e.id == t.id);
+                      } else {
+                        _selectedTracks.add(t);
+                      }
                     }),
                   );
                 },
@@ -785,13 +790,16 @@ class _CreatePlaylistModalState extends State<_CreatePlaylistModal> {
                     final isSel = _selectedTracks.any((e) => e.id == t.id);
                     return ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: ClipRRect(borderRadius: BorderRadius.circular(6), child: t.artwork != null ? Image.network(t.artwork!, width: 44, height: 44, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _artworkPlaceholder()) : _artworkPlaceholder()),
+                      leading: ClipRRect(borderRadius: BorderRadius.circular(6), child: t.artwork != null ? Image.network(t.artwork!, width: 44, height: 44, fit: BoxFit.cover, errorBuilder: (ctx, e, st) => _artworkPlaceholder()) : _artworkPlaceholder()),
                       title: Text(TextUtils.cleanSongTitle(t.title), style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
                       subtitle: Text(TextUtils.cleanSongTitle(t.artist), style: const TextStyle(color: Colors.white70, fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
                       trailing: Icon(isSel ? Icons.check_circle : Icons.add_circle_outline, color: isSel ? const Color(0xFF1DB954) : Colors.white30),
                       onTap: () => setState(() {
-                        if (isSel) _selectedTracks.removeWhere((e) => e.id == t.id);
-                        else _selectedTracks.add(t);
+                        if (isSel) {
+                          _selectedTracks.removeWhere((e) => e.id == t.id);
+                        } else {
+                          _selectedTracks.add(t);
+                        }
                       }),
                     );
                   },

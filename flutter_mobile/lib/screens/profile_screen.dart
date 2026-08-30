@@ -107,20 +107,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _setAutoOffMinutes(int? minutes) async {
-    final prefs = await SharedPreferences.getInstance();
     final player = context.read<PlayerState>();
+    final messenger = ScaffoldMessenger.of(context);
+    final prefs = await SharedPreferences.getInstance();
     if (minutes == null) {
       await prefs.remove('autoOffMinutes');
       player.clearSleepTimer();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Auto Off is turned off')));
+      messenger.showSnackBar(const SnackBar(content: Text('Auto Off is turned off')));
       return;
     }
 
     await prefs.setString('autoOffMinutes', minutes.toString());
     player.setSleepTimer(minutes);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Music will stop after $minutes minutes')));
+    messenger.showSnackBar(SnackBar(content: Text('Music will stop after $minutes minutes')));
   }
 
   Future<void> _saveCustomAutoOff() async {
@@ -135,9 +134,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _toggleAutoPlayNext() async {
-    final prefs = await SharedPreferences.getInstance();
     final player = context.read<PlayerState>();
     final nextValue = !player.autoPlayNextEnabled;
+    final prefs = await SharedPreferences.getInstance();
     await prefs.setString('autoPlayNextEnabled', nextValue.toString());
     player.setAutoPlayNextEnabled(nextValue);
   }

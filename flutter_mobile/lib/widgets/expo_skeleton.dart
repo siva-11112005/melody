@@ -74,7 +74,7 @@ class ExpoSkeleton extends StatefulWidget {
               scrollDirection: Axis.horizontal,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: 4,
-              itemBuilder: (_, __) => Container(
+              itemBuilder: (context, index) => Container(
                 margin: const EdgeInsets.only(right: 16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
