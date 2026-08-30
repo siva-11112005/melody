@@ -20,12 +20,17 @@ subprojects {
 }
 
 subprojects {
-    afterEvaluate {
+    val configureAndroid = {
         val android = extensions.findByType(com.android.build.gradle.BaseExtension::class.java)
         android?.apply {
             compileSdkVersion(34)
             buildToolsVersion("34.0.0")
         }
+    }
+    if (state.executed) {
+        configureAndroid()
+    } else {
+        afterEvaluate { configureAndroid() }
     }
 }
 
