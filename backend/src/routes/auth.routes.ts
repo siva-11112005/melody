@@ -52,7 +52,16 @@ router.post('/login', async (req, res) => {
       { expiresIn: '7d' }
     );
 
-    res.json({ token, user: { id: user._id, email: user.email } });
+    res.json({
+      token,
+      user: {
+        id: user._id,
+        email: user.email,
+        onboardingComplete: user.onboardingComplete ?? false,
+        preferredLanguages: user.preferredLanguages ?? [],
+        favoriteArtists: user.favoriteArtists ?? [],
+      },
+    });
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ message: 'Server error' });
@@ -63,8 +72,34 @@ router.get('/me', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const user = await User.findById(req.user?.id);
     if (!user) return res.status(404).json({ message: 'User not found' });
-    res.json({ user: req.user, recentlyPlayed: user.recentlyPlayed || [] });
+    res.json({
+      user: {
+        id: user._id,
+        email: user.email,
+        onboardingComplete: user.onboardingComplete ?? false,
+        preferredLanguages: user.preferredLanguages ?? [],
+        favoriteArtists: user.favoriteArtists ?? [],
+      },
+      recentlyPlayed: user.recentlyPlayed || [],
+    });
   } catch (error) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Save onboarding preferences to server (survives reinstall)
+router.post('/onboarding', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { languages, artists } = req.body;
+    const user = await User.findById(req.user?.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    user.preferredLanguages = Array.isArray(languages) ? languages : [];
+    user.favoriteArtists = Array.isArray(artists) ? artists : [];
+    user.onboardingComplete = true;
+    await user.save();
+    res.json({ message: 'Onboarding saved', onboardingComplete: true });
+  } catch (error) {
+    console.error('Onboarding error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });

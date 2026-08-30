@@ -15,10 +15,22 @@ const userSchema = new mongoose.Schema({
     type: [Object],
     default: [],
   },
+  onboardingComplete: {
+    type: Boolean,
+    default: false,
+  },
+  preferredLanguages: {
+    type: [String],
+    default: [],
+  },
+  favoriteArtists: {
+    type: [String],
+    default: [],
+  },
   createdAt: {
     type: Date,
     default: Date.now,
-  }
+  },
 });
 
 export const User = mongoose.model('User', userSchema);

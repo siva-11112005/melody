@@ -133,6 +133,25 @@ class ApiService {
         .timeout(const Duration(seconds: 10));
   }
 
+  /// Saves onboarding preferences to the server so they survive app reinstall.
+  Future<void> saveOnboarding(String token, List<String> languages, List<String> artists) async {
+    try {
+      final uri = Uri.parse('$baseUrl/auth/onboarding');
+      await http
+          .post(
+            uri,
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode({'languages': languages, 'artists': artists}),
+          )
+          .timeout(const Duration(seconds: 15));
+    } catch (_) {
+      // Non-critical — local SharedPreferences still serves as fallback
+    }
+  }
+
   Future<List<Map<String, dynamic>>> getPlaylists(String token) async {
     final cached = _playlistCache[token];
     if (cached != null && !cached.isExpired) {

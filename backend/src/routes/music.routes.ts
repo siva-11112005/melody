@@ -446,51 +446,39 @@ router.get('/search', async (req, res) => {
     };
 
     const variants = buildSearchVariants(queryText);
+    // Take only top 3 most relevant variants to avoid too many API calls
+    const topVariants = variants.slice(0, 3);
     const merged: any[] = [];
     const seen = new Set<string>();
 
-    for (const q of variants) {
-      const pagesToTry = Array.from(new Set([pageNum, 1, 2, 3]));
-      for (const pageToTry of pagesToTry) {
-        const fetched = await fetchResults(q, pageToTry);
-        fetched.forEach((item: any) => {
-          const key = getResultKey(item);
-          if (!seen.has(key)) {
-            seen.add(key);
-            merged.push(item);
-          }
-        });
-        if (merged.length >= limitNum + 30) break;
+    // Fetch page 1 for all top variants in parallel
+    const parallelBatches = await Promise.all(
+      topVariants.map(q => fetchResults(q, pageNum).catch(() => [] as any[]))
+    );
+    for (const batch of parallelBatches) {
+      for (const item of batch) {
+        const key = getResultKey(item);
+        if (!seen.has(key)) { seen.add(key); merged.push(item); }
       }
-      if (merged.length >= limitNum + 30) break;
     }
 
-    // Last-resort fuzzy fallback for difficult song/movie name queries
-    if (merged.length < Math.max(5, Math.floor(limitNum / 2))) {
+    // If not enough results, try page 2 of the primary query only
+    if (merged.length < limitNum && pageNum <= 1) {
+      const page2 = await fetchResults(topVariants[0], 2).catch(() => [] as any[]);
+      for (const item of page2) {
+        const key = getResultKey(item);
+        if (!seen.has(key)) { seen.add(key); merged.push(item); }
+      }
+    }
+
+    // Last-resort fuzzy fallback only if critically low results
+    if (merged.length < 5) {
       const queryTokens = getTokens(queryText);
-      const broadQueries = Array.from(new Set([
-        `${queryText} tamil`,
-        `${queryText} movie`,
-        `${queryTokens.slice(0, 2).join(' ')} tamil songs`.trim(),
-        `${queryTokens.slice(0, 1).join(' ')} tamil`.trim(),
-      ])).filter(Boolean);
-
-      for (const broad of broadQueries) {
-        const fetched = await fetchResults(broad, 1);
-        const scored = fetched
-          .map((item: any) => ({ item, score: scoreCandidate(queryText, item) }))
-          .filter((entry) => entry.score > 0)
-          .sort((a, b) => b.score - a.score)
-          .slice(0, limitNum);
-
-        for (const entry of scored) {
-          const key = getResultKey(entry.item);
-          if (!seen.has(key)) {
-            seen.add(key);
-            merged.push(entry.item);
-          }
-        }
-        if (merged.length >= limitNum + 30) break;
+      const fallbackQuery = `${queryTokens.slice(0, 2).join(' ')} tamil songs`.trim();
+      const fetched = await fetchResults(fallbackQuery, 1).catch(() => [] as any[]);
+      for (const item of fetched) {
+        const key = getResultKey(item);
+        if (!seen.has(key)) { seen.add(key); merged.push(item); }
       }
     }
 

@@ -99,9 +99,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadHomeBackground() async {
-    await _generateDynamicSections();
-    await _loadSectionBatch(primarySections.skip(2).toList());
-    await _loadSectionBatch(extraSections);
+    // Load remaining primary + all extra sections in parallel
+    await Future.wait([
+      _generateDynamicSections(),
+      _loadSectionBatch(primarySections.skip(2).toList()),
+      _loadSectionBatch(extraSections),
+    ]);
+    if (mounted) setState(() => _extraLoaded = true);
   }
 
   Future<void> _loadSectionBatch(List<Map<String, dynamic>> sections) async {
@@ -302,7 +306,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final orderedSections = <Map<String, dynamic>>[
       ..._dynamicSections,
       ...primarySections,
-      if (_extraLoaded) ...extraSections,
+      ...extraSections,
     ];
 
     return Stack(
@@ -380,40 +384,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       final loadingMore = _sectionLoadingMore[title] == true;
                       return _section(title, icon, tracks, loadingMore);
                     }),
-                  if (!_extraLoaded && !_loadingExtra && !_loading)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
-                      child: GestureDetector(
-                        onTap: _loadExtraSections,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 16),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF1a1a2e),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.expand_more, color: Color(0xFF1DB954), size: 20),
-                              SizedBox(width: 8),
-                              Text('Show More Categories', style: TextStyle(color: Color(0xFF1DB954), fontWeight: FontWeight.w600, fontSize: 14)),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  if (_loadingExtra)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 20),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF1DB954))),
-                          SizedBox(width: 12),
-                          Text('Loading more categories...', style: TextStyle(color: Colors.white70)),
-                        ],
-                      ),
-                    ),
+
                   if (recently.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 18),

@@ -37,6 +37,34 @@ class AuthState extends ChangeNotifier {
       user = jsonDecode(userRaw) as Map<String, dynamic>;
     }
 
+    // First check server-side onboarding status if logged in
+    if (token != null && token!.isNotEmpty) {
+      try {
+        final meData = await _api.getMe(token!);
+        final serverUser = meData['user'] as Map<String, dynamic>?;
+        if (serverUser != null) {
+          final serverOnboarded = serverUser['onboardingComplete'] as bool? ?? false;
+          if (serverOnboarded) {
+            // Restore onboarding from server — survives reinstall
+            final langs = (serverUser['preferredLanguages'] as List?)?.cast<String>() ?? [];
+            final artists = (serverUser['favoriteArtists'] as List?)?.cast<String>() ?? [];
+            await prefs.setStringList('preferredLanguages', langs);
+            await prefs.setStringList('favoriteArtists', artists);
+            await prefs.setBool(_onboardingKey(serverUser), true);
+            user = serverUser;
+            await prefs.setString('user', jsonEncode(serverUser));
+            onboardingComplete = true;
+            isReady = true;
+            notifyListeners();
+            return;
+          }
+        }
+      } catch (_) {
+        // Server check failed — fall back to local SharedPreferences
+      }
+    }
+
+    // Local fallback check
     final language = prefs.getStringList('preferredLanguages') ?? const [];
     final artists = prefs.getStringList('favoriteArtists') ?? const [];
     onboardingComplete = prefs.getBool(_onboardingKey()) ?? (language.isNotEmpty && artists.isNotEmpty);
@@ -53,7 +81,19 @@ class AuthState extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('token', token ?? '');
     await prefs.setString('user', jsonEncode(user ?? <String, dynamic>{}));
-    onboardingComplete = prefs.getBool(_onboardingKey(user)) ?? false;
+
+    // Server returns onboarding status — restore without asking user again
+    final serverOnboarded = user?['onboardingComplete'] as bool? ?? false;
+    if (serverOnboarded) {
+      final langs = (user?['preferredLanguages'] as List?)?.cast<String>() ?? [];
+      final arts = (user?['favoriteArtists'] as List?)?.cast<String>() ?? [];
+      await prefs.setStringList('preferredLanguages', langs);
+      await prefs.setStringList('favoriteArtists', arts);
+      await prefs.setBool(_onboardingKey(user), true);
+      onboardingComplete = true;
+    } else {
+      onboardingComplete = prefs.getBool(_onboardingKey(user)) ?? false;
+    }
     notifyListeners();
   }
 
@@ -84,6 +124,11 @@ class AuthState extends ChangeNotifier {
     await prefs.setBool(_onboardingKey(), true);
     onboardingComplete = true;
     notifyListeners();
+
+    // Also save to server in background so reinstall doesn't ask again
+    if (token != null && token!.isNotEmpty) {
+      _api.saveOnboarding(token!, languages, artists);
+    }
   }
 
   Future<void> updateUserName(String name) async {
