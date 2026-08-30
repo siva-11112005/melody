@@ -27,65 +27,133 @@ class MiniPlayer extends StatelessWidget {
             margin: const EdgeInsets.fromLTRB(8, 0, 8, 8),
             clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
-              color: const Color(0xFF282828),
-              borderRadius: BorderRadius.circular(10),
+              color: const Color(0xFF242424),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
               boxShadow: const [
-                BoxShadow(color: Colors.black38, blurRadius: 8, offset: Offset(0, -2)),
+                BoxShadow(color: Colors.black45, blurRadius: 10, offset: Offset(0, -3)),
               ],
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 SizedBox(
-                  height: 2,
+                  height: 2.5,
                   child: LinearProgressIndicator(
                     value: progress,
                     color: const Color(0xFF1DB954),
-                    backgroundColor: const Color(0xFF444444),
+                    backgroundColor: const Color(0xFF383838),
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                   child: Row(
                     children: [
+                      // Artwork with subtle radius
                       ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
-                        child: track.artwork != null
-                            ? Image.network(track.artwork!, width: 46, height: 46, fit: BoxFit.cover, errorBuilder: (context, error, stackTrace) => Container(width: 46, height: 46, color: const Color(0xFF121212), child: const Icon(Icons.music_note, color: Colors.white30)))
+                        borderRadius: BorderRadius.circular(8),
+                        child: track.artwork != null && track.artwork!.isNotEmpty
+                            ? Image.network(
+                                track.artwork!,
+                                width: 44,
+                                height: 44,
+                                fit: BoxFit.cover,
+                                errorBuilder: (ctx, err, st) => Container(
+                                  width: 44,
+                                  height: 44,
+                                  color: const Color(0xFF181818),
+                                  child: const Icon(Icons.music_note, color: Colors.white30, size: 20),
+                                ),
+                              )
                             : Container(
-                                width: 46,
-                                height: 46,
-                                color: const Color(0xFF121212),
-                                child: const Icon(Icons.music_note, color: Colors.white30),
+                                width: 44,
+                                height: 44,
+                                color: const Color(0xFF181818),
+                                child: const Icon(Icons.music_note, color: Colors.white30, size: 20),
                               ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 10),
+
+                      // Track details + Sleep Timer indicator
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(TextUtils.cleanSongTitle(track.title), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    TextUtils.cleanSongTitle(track.title),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+                                  ),
+                                ),
+                                if (player.sleepTimerMinutes != null) ...[
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF1DB954).withValues(alpha: 0.2),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(color: const Color(0xFF1DB954).withValues(alpha: 0.4)),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(Icons.timer, color: Color(0xFF1DB954), size: 10),
+                                        const SizedBox(width: 2),
+                                        Text(
+                                          '${player.sleepTimerMinutes}m',
+                                          style: const TextStyle(color: Color(0xFF1DB954), fontSize: 9, fontWeight: FontWeight.bold),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
                             const SizedBox(height: 2),
-                            Text(TextUtils.cleanSongTitle(track.artist), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Color(0xFFb3b3b3), fontSize: 12)),
+                            Text(
+                              TextUtils.cleanSongTitle(track.artist),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(color: Color(0xFFB3B3B3), fontSize: 11),
+                            ),
                           ],
                         ),
                       ),
+
+                      // Controls: Like, Previous, Play/Pause, Next
                       Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
+                          // Like Button
                           IconButton(
                             onPressed: () => library.toggleLike(track),
                             constraints: const BoxConstraints(),
-                            padding: const EdgeInsets.all(4),
+                            padding: const EdgeInsets.all(5),
                             icon: Icon(
                               library.isLiked(track.id) ? Icons.favorite : Icons.favorite_border,
-                              size: 22,
-                              color: library.isLiked(track.id) ? const Color(0xFF1DB954) : const Color(0xFFb3b3b3),
+                              size: 20,
+                              color: library.isLiked(track.id) ? const Color(0xFF1DB954) : Colors.white60,
                             ),
                           ),
-                          const SizedBox(width: 12),
+
+                          // Previous Button
+                          IconButton(
+                            onPressed: () => player.playPrevious(),
+                            constraints: const BoxConstraints(),
+                            padding: const EdgeInsets.all(5),
+                            icon: const Icon(Icons.skip_previous, color: Colors.white, size: 22),
+                          ),
+
+                          // Play / Pause Button
                           Container(
-                            width: 36,
-                            height: 36,
+                            width: 34,
+                            height: 34,
+                            margin: const EdgeInsets.symmetric(horizontal: 3),
                             decoration: const BoxDecoration(
                               color: Color(0xFF1DB954),
                               shape: BoxShape.circle,
@@ -99,8 +167,16 @@ class MiniPlayer extends StatelessWidget {
                                   player.resume();
                                 }
                               },
-                              icon: Icon(player.isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.black, size: 24),
+                              icon: Icon(player.isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.black, size: 22),
                             ),
+                          ),
+
+                          // Next Button
+                          IconButton(
+                            onPressed: () => player.playNext(),
+                            constraints: const BoxConstraints(),
+                            padding: const EdgeInsets.all(5),
+                            icon: const Icon(Icons.skip_next, color: Colors.white, size: 22),
                           ),
                         ],
                       ),

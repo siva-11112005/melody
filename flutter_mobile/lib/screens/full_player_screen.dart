@@ -192,6 +192,53 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
     );
   }
 
+  void _openSleepTimerSheet(BuildContext context, PlayerState player) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E1E1E),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Sleep Timer (Auto Off)', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [15, 30, 45, 60].map((mins) {
+                final isSelected = player.sleepTimerMinutes == mins;
+                return ChoiceChip(
+                  label: Text('$mins mins', style: TextStyle(color: isSelected ? Colors.black : Colors.white, fontWeight: FontWeight.bold)),
+                  selected: isSelected,
+                  selectedColor: const Color(0xFF1DB954),
+                  backgroundColor: const Color(0xFF2C2C2C),
+                  onSelected: (_) {
+                    player.setSleepTimer(mins);
+                    Navigator.pop(ctx);
+                  },
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 16),
+            if (player.sleepTimerMinutes != null)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.timer_off, color: Colors.redAccent),
+                title: const Text('Turn Off Sleep Timer', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                onTap: () {
+                  player.clearSleepTimer();
+                  Navigator.pop(ctx);
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _openQueueSheet(BuildContext context, PlayerState player) {
     showModalBottomSheet(
       context: context,
@@ -478,9 +525,10 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
                           onTap: () => _openPlaylistSheet(context, track),
                         ),
                         _buildPlayerAction(
-                          icon: Icons.radio_outlined,
-                          label: 'Radio',
-                          onTap: () {},
+                          icon: Icons.timer_outlined,
+                          label: player.sleepTimerMinutes != null ? '${player.sleepTimerMinutes}m' : 'Auto Off',
+                          color: player.sleepTimerMinutes != null ? const Color(0xFF1DB954) : const Color(0xFFb3b3b3),
+                          onTap: () => _openSleepTimerSheet(context, player),
                         ),
                       ],
                     ),

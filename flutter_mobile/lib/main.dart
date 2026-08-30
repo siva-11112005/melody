@@ -24,6 +24,8 @@ Future<void> main() async {
     androidNotificationChannelId: 'com.melody.music.channel.audio',
     androidNotificationChannelName: 'Tamil Music Playback',
     androidNotificationOngoing: true,
+    androidNotificationIcon: 'mipmap/ic_launcher',
+    notificationColor: const Color(0xFF1DB954),
   );
   runApp(const MelodyFlutterApp());
 }
