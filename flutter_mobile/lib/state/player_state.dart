@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:audio_session/audio_session.dart';
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart' as ja;
 import 'package:just_audio_background/just_audio_background.dart';
@@ -13,6 +14,7 @@ class PlayerState extends ChangeNotifier {
   StreamSubscription<ja.PlayerState>? _playerStateSub;
   Timer? _positionNotifyTimer;
   bool _disposed = false;
+  bool _wasPlayingBeforeInterruption = false;
 
   Track? currentTrack;
   List<Track> queue = [];
@@ -31,6 +33,8 @@ class PlayerState extends ChangeNotifier {
   final Map<String, Track?> _downloadedTrackCache = {};
 
   PlayerState() {
+    _initAudioSession();
+
     _positionSub = _audioPlayer.positionStream.listen((p) {
       positionMs = p.inMilliseconds;
       _schedulePositionNotify();
@@ -48,6 +52,49 @@ class PlayerState extends ChangeNotifier {
       durationMs = d?.inMilliseconds ?? 0;
       notifyListeners();
     });
+  }
+
+  Future<void> _initAudioSession() async {
+    try {
+      final session = await AudioSession.instance;
+      await session.configure(const AudioSessionConfiguration.music());
+
+      session.interruptionEventStream.listen((event) {
+        if (event.begin) {
+          switch (event.type) {
+            case AudioInterruptionType.duck:
+              _audioPlayer.setVolume(0.5);
+              break;
+            case AudioInterruptionType.pause:
+            case AudioInterruptionType.unknown:
+              _wasPlayingBeforeInterruption = isPlaying;
+              if (isPlaying) {
+                _audioPlayer.pause();
+              }
+              break;
+          }
+        } else {
+          _audioPlayer.setVolume(1.0);
+          switch (event.type) {
+            case AudioInterruptionType.duck:
+              break;
+            case AudioInterruptionType.pause:
+            case AudioInterruptionType.unknown:
+              if (_wasPlayingBeforeInterruption && currentTrack != null) {
+                _audioPlayer.play();
+                _wasPlayingBeforeInterruption = false;
+              }
+              break;
+          }
+        }
+      });
+
+      session.becomingNoisyEventStream.listen((_) {
+        pause();
+      });
+    } catch (e) {
+      debugPrint('AudioSession init error: $e');
+    }
   }
 
   void _schedulePositionNotify() {

@@ -125,6 +125,12 @@ function scoreCandidate(query: string, item: any) {
   else if (qNorm.includes('kannada') && lang.includes('kannada')) score += 25;
   else if (qNorm.includes('english') && lang.includes('english')) score += 25;
 
+  // Popularity & play count boost
+  const playCount = Number(item?.play_count || item?.more_info?.play_count || item?.playCount || 0);
+  if (playCount > 1000000) score += 15;
+  else if (playCount > 100000) score += 8;
+  else if (playCount > 10000) score += 4;
+
   if (title.includes(qNorm)) score += 10;
   if (album.includes(qNorm)) score += 8;
   if (qNorm.includes(title) && title.length > 3) score += 4;
