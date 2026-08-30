@@ -101,7 +101,6 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadHomeBackground() async {
     await _generateDynamicSections();
     await _loadSectionBatch(primarySections.skip(2).toList());
-    await Future.delayed(const Duration(milliseconds: 300));
     await _loadSectionBatch(extraSections);
   }
 
@@ -178,35 +177,20 @@ class _HomeScreenState extends State<HomeScreen> {
     _sectionHasMore[title] = true;
     _sectionLoadingMore[title] = false;
 
-    final seen = <String>{};
-    final fetchedBatches = await Future.wait(
-      queries.map((query) async {
-        try {
-          return await _api.searchSongs(query, page: 1, limit: 12);
-        } catch (_) {
-          return const <Track>[];
-        }
-      }),
-    );
-    final all = <Track>[];
-    int usedQueryIndex = 0;
-    for (int i = 0; i < fetchedBatches.length; i++) {
-      final unique = _dedupe(fetchedBatches[i], seen);
-      if (unique.isNotEmpty && all.isEmpty) {
-        usedQueryIndex = i;
-      }
-      all.addAll(unique);
-      if (all.length >= initialLoadSize) break;
-    }
+    final primaryQuery = queries.isNotEmpty ? queries.first : title;
+    List<Track> fetched = const [];
+    try {
+      fetched = await _api.searchSongs(primaryQuery, page: 1, limit: 12);
+    } catch (_) {}
 
-    all.shuffle();
-    final sliced = all.take(initialLoadSize).toList();
+    final seen = <String>{};
+    final sliced = _dedupe(fetched, seen).take(initialLoadSize).toList();
 
     if (!mounted) return;
     setState(() {
       _sections[title] = sliced;
-      _sectionQueryIndex[title] = usedQueryIndex;
-      _sectionHasMore[title] = sliced.length >= pageSize;
+      _sectionQueryIndex[title] = 0;
+      _sectionHasMore[title] = true;
     });
 
     _maybeAutoLoad(title);
@@ -493,32 +477,35 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           SizedBox(
             height: 176,
-            child: _horizontalTracks(tracks, tracks, controller: controller),
+            child: _horizontalTracks(tracks, tracks, controller: controller, isLoadingMore: loadingMore),
           ),
-          if (loadingMore)
-            const Padding(
-              padding: EdgeInsets.only(top: 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF1DB954))),
-                  SizedBox(width: 10),
-                  Text('Loading...', style: TextStyle(color: Color(0xFFb3b3b3), fontSize: 11)),
-                ],
-              ),
-            ),
         ],
       ),
     );
   }
 
-  Widget _horizontalTracks(List<Track> tracks, List<Track> contextQueue, {ScrollController? controller}) {
+  Widget _horizontalTracks(List<Track> tracks, List<Track> contextQueue, {ScrollController? controller, bool isLoadingMore = false}) {
     return ListView.builder(
       controller: controller,
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.only(right: 20),
-      itemCount: tracks.length,
-      itemBuilder: (_, i) => _trackCard(tracks[i], contextQueue),
+      itemCount: tracks.length + (isLoadingMore ? 1 : 0),
+      itemBuilder: (_, i) {
+        if (i < tracks.length) {
+          return _trackCard(tracks[i], contextQueue);
+        }
+        return Container(
+          width: 80,
+          margin: const EdgeInsets.only(left: 12),
+          child: const Center(
+            child: SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(strokeWidth: 2.5, color: Color(0xFF1DB954)),
+            ),
+          ),
+        );
+      },
     );
   }
 

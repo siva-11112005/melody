@@ -422,8 +422,8 @@ router.get('/search', async (req, res) => {
         try {
           const response = await fetchWithRetry(() => axios.get(`${JIOSAAVN_API_URL}/api/search/songs`, {
             params: { query: q, limit: limitNum, page: pageForQuery },
-            timeout: 8000,
-          }), 2);
+            timeout: 3000,
+          }), 1);
           if (response.data?.data?.results?.length > 0) {
             fetched = response.data.data.results.map((item: any) => normalizeTrackRecord(item));
             source = 'proxy';
