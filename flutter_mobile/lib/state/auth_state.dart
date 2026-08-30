@@ -82,23 +82,25 @@ class AuthState extends ChangeNotifier {
     await prefs.setString('token', token ?? '');
     await prefs.setString('user', jsonEncode(user ?? <String, dynamic>{}));
 
-    // Server returns onboarding status — restore without asking user again
-    final serverOnboarded = user?['onboardingComplete'] as bool? ?? false;
-    if (serverOnboarded) {
-      final langs = (user?['preferredLanguages'] as List?)?.cast<String>() ?? [];
-      final arts = (user?['favoriteArtists'] as List?)?.cast<String>() ?? [];
-      await prefs.setStringList('preferredLanguages', langs);
-      await prefs.setStringList('favoriteArtists', arts);
-      await prefs.setBool(_onboardingKey(user), true);
-      onboardingComplete = true;
-    } else {
-      onboardingComplete = prefs.getBool(_onboardingKey(user)) ?? false;
-    }
+    // Existing user logging in -> skip language selection and go straight to Home!
+    await prefs.setBool(_onboardingKey(user), true);
+    onboardingComplete = true;
     notifyListeners();
   }
 
   Future<void> signup(String email, String password) async {
     await _api.signup(email, password);
+    // Automatically log in new user and flag onboarding required
+    final result = await _api.login(email, password);
+    token = result['token']?.toString();
+    user = result['user'] as Map<String, dynamic>?;
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('token', token ?? '');
+    await prefs.setString('user', jsonEncode(user ?? <String, dynamic>{}));
+    await prefs.setBool(_onboardingKey(user), false);
+    onboardingComplete = false;
+    notifyListeners();
   }
 
   Future<void> changePassword(String currentPassword, String newPassword) async {
