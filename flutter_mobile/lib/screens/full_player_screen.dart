@@ -289,16 +289,27 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
                       border: Border.all(color: active ? const Color(0xFF1DB954) : const Color(0xFF2A2A2A)),
                     ),
                     child: ListTile(
-                      leading: item.artwork != null
+                      leading: item.artwork != null && item.artwork!.isNotEmpty
                           ? ClipRRect(
                               borderRadius: BorderRadius.circular(10),
-                              child: Image.network(item.artwork!, width: 44, height: 44, fit: BoxFit.cover),
+                              child: Image.network(
+                                item.artwork!,
+                                width: 44,
+                                height: 44,
+                                fit: BoxFit.cover,
+                                errorBuilder: (ctx, e, st) => Container(
+                                  width: 44,
+                                  height: 44,
+                                  decoration: BoxDecoration(color: const Color(0xFF282828), borderRadius: BorderRadius.circular(10)),
+                                  child: const Icon(Icons.music_note, color: Colors.white70, size: 20),
+                                ),
+                              ),
                             )
                           : Container(
                               width: 44,
                               height: 44,
                               decoration: BoxDecoration(color: const Color(0xFF282828), borderRadius: BorderRadius.circular(10)),
-                              child: const Icon(Icons.music_note, color: Colors.white70),
+                              child: const Icon(Icons.music_note, color: Colors.white70, size: 20),
                             ),
                       title: Text(item.title, style: TextStyle(color: active ? const Color(0xFF1DB954) : Colors.white, fontWeight: FontWeight.w700)),
                       subtitle: Text(item.artist, style: const TextStyle(color: Colors.white70)),
@@ -394,8 +405,19 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
                         ),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(24),
-                          child: track.artwork != null
-                              ? Image.network(track.artwork!, width: 300, height: 300, fit: BoxFit.cover)
+                          child: track.artwork != null && track.artwork!.isNotEmpty
+                              ? Image.network(
+                                  track.artwork!,
+                                  width: 300,
+                                  height: 300,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (ctx, e, st) => Container(
+                                    width: 300,
+                                    height: 300,
+                                    color: const Color(0xFF2A2A2A),
+                                    child: const Icon(Icons.music_note, color: Colors.white70, size: 60),
+                                  ),
+                                )
                               : Container(
                                   width: 300,
                                   height: 300,

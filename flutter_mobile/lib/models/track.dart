@@ -92,21 +92,50 @@ class Track {
         'fingerprint': fingerprint,
       };
 
-  factory Track.fromJson(Map<String, dynamic> json) => Track(
-        id: (json['id'] ?? '').toString(),
-        title: (json['title'] ?? '').toString(),
-        artist: (json['artist'] ?? '').toString(),
-        album: json['album'] as String?,
-        language: json['language'] as String?,
-        artwork: json['artwork'] as String?,
-        url: json['url'] as String?,
-        durationMs: (json['duration'] is int)
-            ? json['duration'] as int
-            : int.tryParse('${json['duration'] ?? 0}') ?? 0,
-        downloadUrl: (json['downloadUrl'] as List?) ?? const [],
-        localUri: json['localUri'] as String?,
-        fingerprint: json['fingerprint'] as String?,
-      );
+  factory Track.fromJson(Map<String, dynamic> json) {
+    final dl = (json['downloadUrl'] as List?) ?? const [];
+    String? bestUrl = (json['url'] ?? json['streamUrl'] ?? json['audioUrl']) as String?;
+    if ((bestUrl == null || bestUrl.isEmpty) && dl.isNotEmpty) {
+      final last = dl.last;
+      if (last is Map && last['url'] is String) {
+        bestUrl = last['url'] as String;
+      } else if (last is String) {
+        bestUrl = last;
+      }
+    }
+
+    String? bestArtwork = json['artwork'] as String?;
+    if ((bestArtwork == null || bestArtwork.isEmpty) && json['image'] is List) {
+      final imgList = json['image'] as List;
+      if (imgList.isNotEmpty) {
+        final lastImg = imgList.last;
+        if (lastImg is Map && lastImg['url'] is String) {
+          bestArtwork = lastImg['url'] as String;
+        } else if (lastImg is String) {
+          bestArtwork = lastImg;
+        }
+      }
+    }
+
+    final rawDuration = (json['duration'] is int)
+        ? json['duration'] as int
+        : int.tryParse('${json['duration'] ?? 0}') ?? 0;
+    final durationMs = rawDuration < 1000 && rawDuration > 0 ? rawDuration * 1000 : rawDuration;
+
+    return Track(
+      id: (json['id'] ?? '').toString(),
+      title: (json['title'] ?? json['name'] ?? json['song'] ?? 'Unknown').toString(),
+      artist: (json['artist'] ?? json['primaryArtists'] ?? 'Unknown').toString(),
+      album: json['album'] as String?,
+      language: json['language'] as String?,
+      artwork: bestArtwork,
+      url: bestUrl,
+      durationMs: durationMs,
+      downloadUrl: dl,
+      localUri: json['localUri'] as String?,
+      fingerprint: json['fingerprint'] as String?,
+    );
+  }
 
   Track copyWith({
     String? url,

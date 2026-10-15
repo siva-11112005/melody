@@ -40,18 +40,24 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   checkAuth: async () => {
     try {
-      // Timeout wrapper — if AsyncStorage hangs for 2s, proceed anyway
-      const withTimeout = <T>(promise: Promise<T>, fallback: T): Promise<T> =>
-        Promise.race([
-          promise,
-          new Promise<T>((resolve) => setTimeout(() => resolve(fallback), 2000)),
-        ]);
-
-      const token = await withTimeout(AsyncStorage.getItem('token'), null);
-      const userStr = await withTimeout(AsyncStorage.getItem('user'), null);
-      const onboarding = await withTimeout(AsyncStorage.getItem('onboardingComplete'), null);
-      const preferredLanguages = await withTimeout(AsyncStorage.getItem('preferredLanguages'), null);
-      const favoriteArtists = await withTimeout(AsyncStorage.getItem('favoriteArtists'), null);
+      const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500));
+      const values = await Promise.race([
+        AsyncStorage.multiGet([
+          'token',
+          'user',
+          'onboardingComplete',
+          'preferredLanguages',
+          'favoriteArtists',
+        ]),
+        timeout,
+      ]);
+      const entries = Array.isArray(values) ? values : [];
+      const stored = Object.fromEntries(entries);
+      const token = stored.token || null;
+      const userStr = stored.user || null;
+      const onboarding = stored.onboardingComplete || null;
+      const preferredLanguages = stored.preferredLanguages || null;
+      const favoriteArtists = stored.favoriteArtists || null;
       const hasOnboardingData = !!preferredLanguages && !!favoriteArtists;
 
       if (token && userStr) {

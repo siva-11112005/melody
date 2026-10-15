@@ -16,6 +16,7 @@ import { cleanSongTitle } from '../utils/textUtils';
 
 type TabName = 'playlists' | 'recent' | 'downloads' | 'liked';
 const REMIX_NOISE_WORDS = /\b(remix|version|ver|live|karaoke|slowed|reverb|mashup|dj|mix|edit|cover)\b/gi;
+const PLAYLIST_CACHE_KEY = 'playlistsCacheV1';
 
 export default function LibraryScreen() {
   const [activeTab, setActiveTab] = useState<TabName>('playlists');
@@ -59,15 +60,19 @@ export default function LibraryScreen() {
     setLikedSongs(data ? JSON.parse(data) : []);
   };
 
-  const loadPlaylists = async () => {
+  const loadPlaylistsFromServer = async () => {
     try {
       const token = await AsyncStorage.getItem('token');
       if (!token) return;
       const resp = await axios.get(`${API_URL}/playlists`, {
         headers: { Authorization: `Bearer ${token}` }, timeout: 5000,
       });
-      setPlaylists(Array.isArray(resp.data) ? resp.data : []);
-    } catch { setPlaylists([]); }
+      const nextPlaylists = Array.isArray(resp.data) ? resp.data : [];
+      setPlaylists(nextPlaylists);
+      await AsyncStorage.setItem(PLAYLIST_CACHE_KEY, JSON.stringify(nextPlaylists));
+    } catch (error: any) {
+      console.error('Load playlists error:', error?.message);
+    }
   };
 
   const removeLiked = async (trackId: string) => {
@@ -133,7 +138,20 @@ export default function LibraryScreen() {
     else setSelectedTracks([...selectedTracks, track]);
   };
 
-  const addTracksToPlaylist = async (playlistId: string, tracks: any[]) => {
+  const loadPlaylists = async () => {
+    const cached = await AsyncStorage.getItem(PLAYLIST_CACHE_KEY);
+    if (cached) {
+      try {
+        const cachedPlaylists = JSON.parse(cached);
+        if (Array.isArray(cachedPlaylists)) setPlaylists(cachedPlaylists);
+      } catch {
+        await AsyncStorage.removeItem(PLAYLIST_CACHE_KEY);
+      }
+    }
+    await loadPlaylistsFromServer();
+  };
+
+  const addTracksToPlaylistLegacy = async (playlistId: string, tracks: any[]) => {
     const token = await AsyncStorage.getItem('token');
     for (const track of tracks) {
       await axios.post(`${API_URL}/playlists/${playlistId}/tracks`,
@@ -141,6 +159,17 @@ export default function LibraryScreen() {
         { headers: { Authorization: `Bearer ${token}` }, timeout: 5000 }
       ).catch(() => {});
     }
+  };
+
+  const addTracksToPlaylist = async (playlistId: string, tracks: any[]) => {
+    if (tracks.length === 0) return;
+    const token = await AsyncStorage.getItem('token');
+    if (!token) throw new Error('You must be logged in to update playlists');
+    await axios.post(
+      `${API_URL}/playlists/${playlistId}/tracks/bulk`,
+      { tracks },
+      { headers: { Authorization: `Bearer ${token}` }, timeout: 10000 },
+    );
   };
 
   const createPlaylistWithTracks = async (tracks: any[]) => {
@@ -390,7 +419,7 @@ export default function LibraryScreen() {
 
   const renderTrackItem = (track: any, playlistId?: string, contextTracks?: any[], type?: 'liked' | 'download') => (
     <TouchableOpacity style={styles.trackItem} onPress={() => { void handlePlay(track, contextTracks); }} activeOpacity={0.6} key={track.id}>
-      <Image source={{ uri: track.artwork || track.image || 'https://placehold.co/50x50/282828/fff?text=♪' }} style={styles.trackImage} />
+      <Image source={{ uri: track.artwork || track.image || 'https://placehold.co/50x50/282828/fff?text=â™ª' }} style={styles.trackImage} />
       <View style={styles.trackInfo}>
         <Text style={styles.trackTitle} numberOfLines={1}>{cleanSongTitle(track.title || track.name)}</Text>
         <Text style={styles.trackArtist} numberOfLines={1}>{cleanSongTitle(track.artist)}</Text>

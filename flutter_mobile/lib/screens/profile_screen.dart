@@ -30,6 +30,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
   int _downloadCount = 0;
   List<String> _languages = [];
   String _audioQuality = 'High (320 kbps)';
+  String _preferredEra = 'default';
+
+  static const List<Map<String, String>> eraOptions = [
+    {'id': 'default', 'label': 'Default (Trending & All Mix)', 'desc': 'Best mix of trending & evergreen songs'},
+    {'id': 'latest', 'label': 'Latest Hits (2025 - 2026)', 'desc': 'New releases & chartbusters'},
+    {'id': '2010s', 'label': "2010's Superhits", 'desc': 'Anirudh, Dhanush, Vijay viral era'},
+    {'id': '2000s', 'label': "2000's Superhits", 'desc': 'Harris Jayaraj & Yuvan cult melodies'},
+    {'id': '90s', 'label': "90's Tamil Classics", 'desc': 'A.R. Rahman & Ilaiyaraaja 90s golden hits'},
+    {'id': '80s', 'label': "80's Tamil Classics", 'desc': 'SPB & Ilaiyaraaja 80s vintage magic'},
+  ];
 
   static const List<String> availableLanguages = [
     'Tamil', 'Hindi', 'English', 'Telugu', 'Kannada', 'Malayalam', 'Punjabi', 'Bengali', 'Marathi', 'Other'
@@ -63,12 +73,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final autoOff = prefs.getString('autoOffMinutes');
       final autoNext = prefs.getString('autoPlayNextEnabled');
       final quality = prefs.getString('audioQuality') ?? 'High (320 kbps)';
+      final era = prefs.getString('preferredMusicEra') ?? 'default';
 
       if (!mounted) return;
       setState(() {
         _downloadCount = downloads.length;
         _languages = languages;
         _audioQuality = quality;
+        _preferredEra = era;
       });
 
       final player = context.read<PlayerState>();
@@ -245,6 +257,48 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           );
         },
+      ),
+    );
+  }
+
+  void _openEraPicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF181818),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Song Era & Time Period', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 6),
+            const Text('Select which music era to feature on your Home Screen', style: TextStyle(color: Colors.white60, fontSize: 13)),
+            const SizedBox(height: 16),
+            ...eraOptions.map((opt) {
+              final isSel = _preferredEra == opt['id'];
+              return ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  isSel ? Icons.radio_button_checked : Icons.radio_button_off,
+                  color: isSel ? const Color(0xFF1DB954) : Colors.white54,
+                ),
+                title: Text(opt['label']!, style: TextStyle(color: isSel ? const Color(0xFF1DB954) : Colors.white, fontWeight: isSel ? FontWeight.bold : FontWeight.w500)),
+                subtitle: Text(opt['desc']!, style: const TextStyle(color: Colors.white38, fontSize: 12)),
+                onTap: () async {
+                  final messenger = ScaffoldMessenger.of(context);
+                  final navigator = Navigator.of(ctx);
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setString('preferredMusicEra', opt['id']!);
+                  if (mounted) setState(() => _preferredEra = opt['id']!);
+                  navigator.pop();
+                  messenger.showSnackBar(SnackBar(content: Text('Song preference updated to ${opt['label']}')));
+                },
+              );
+            }),
+          ],
+        ),
       ),
     );
   }
@@ -429,6 +483,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   title: 'Music Languages',
                   subtitle: _languages.isEmpty ? 'All languages' : _languages.join(', ').toUpperCase(),
                   onTap: _openLanguagePicker,
+                ),
+
+                // Music Era / Discovery Time Period Tile
+                _buildTile(
+                  icon: Icons.timelapse,
+                  title: 'Song Era Preference',
+                  subtitle: eraOptions.firstWhere((e) => e['id'] == _preferredEra, orElse: () => eraOptions.first)['label']!,
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.white38),
+                  onTap: _openEraPicker,
                 ),
 
                 // Downloaded Songs Manager

@@ -58,8 +58,7 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
   }
 
   Future<void> _loadPlaylists() async {
-    final token = context.read<AuthState>().token;
-    if (token == null || token.isEmpty) return;
+    final token = context.read<AuthState>().token ?? '';
     setState(() => loadingPlaylists = true);
     try {
       final items = await _api.getPlaylists(token);
@@ -70,18 +69,14 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
     }
   }
 
-
-
   Future<void> _deletePlaylist(String id) async {
-    final token = context.read<AuthState>().token;
-    if (token == null || token.isEmpty) return;
+    final token = context.read<AuthState>().token ?? '';
     await _api.deletePlaylist(token, id);
     await _loadPlaylists();
   }
 
   Future<void> _removeTrackFromPlaylist(String playlistId, String trackId) async {
-    final token = context.read<AuthState>().token;
-    if (token == null || token.isEmpty) return;
+    final token = context.read<AuthState>().token ?? '';
     await _api.removeTrackFromPlaylist(token, playlistId, trackId);
     await _loadPlaylists();
   }
@@ -337,7 +332,32 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
                         children: [
                           if (tracks.isEmpty)
                             const Padding(padding: EdgeInsets.all(20), child: Text('No songs yet. Add some below!', style: TextStyle(color: Colors.white24, fontSize: 13)))
-                          else
+                          else ...[
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text('${tracks.length} Songs', style: const TextStyle(color: Colors.white60, fontSize: 13, fontWeight: FontWeight.w600)),
+                                  ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFF1DB954),
+                                      foregroundColor: Colors.black,
+                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                    ),
+                                    icon: const Icon(Icons.play_arrow, size: 18),
+                                    label: const Text('Play All', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                                    onPressed: () async {
+                                      final trackList = tracks.map((t) => Track.fromJson(Map<String, dynamic>.from(t as Map))).toList();
+                                      if (trackList.isNotEmpty) {
+                                        await context.read<PlayerState>().playTrack(trackList.first, contextQueue: trackList);
+                                      }
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
                             ...tracks.map((item) {
                               final track = Track.fromJson(Map<String, dynamic>.from(item as Map));
                               return ListTile(
@@ -371,6 +391,7 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
                                 },
                               );
                             }),
+                          ],
                           Padding(
                             padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 15),
                             child: Row(

@@ -43,8 +43,10 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   loadLibrary: async () => {
     // Load from local storage FIRST (instant, never fails)
     try {
-      const searches = await AsyncStorage.getItem('recentSearches');
-      const played = await AsyncStorage.getItem('recentlyPlayed');
+      const [[, searches], [, played]] = await AsyncStorage.multiGet([
+        'recentSearches',
+        'recentlyPlayed',
+      ]);
       
       set({
         recentSearches: searches ? JSON.parse(searches) : [],

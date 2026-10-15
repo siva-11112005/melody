@@ -139,8 +139,14 @@ export default function ProfileScreen() {
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>{initial}</Text>
         </View>
-        <Text style={styles.userName}>{user?.name || 'Music Lover'}</Text>
-        <Text style={styles.userEmail}>{user?.email || ''}</Text>
+        <View style={styles.profileIdentity}>
+          <Text style={styles.userName} numberOfLines={1}>{user?.name || 'Music Lover'}</Text>
+          <Text style={styles.userEmail} numberOfLines={1}>{user?.email || ''}</Text>
+          <TouchableOpacity style={styles.editProfileButton} onPress={openEditNameModal}>
+            <Ionicons name="create-outline" size={15} color="#1DB954" />
+            <Text style={styles.editProfileText}>Edit name</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Stats */}
@@ -294,11 +300,14 @@ const styles = StyleSheet.create({
   topBranding: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, marginBottom: 20, gap: 10 },
   logoContainer: { backgroundColor: 'rgba(29, 185, 84, 0.12)', padding: 6, borderRadius: 10 },
   brandTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-  profileHeader: { alignItems: 'center', paddingVertical: 15 },
-  avatar: { width: 90, height: 90, borderRadius: 45, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
+  profileHeader: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 20, padding: 16, borderRadius: 16, backgroundColor: '#1b1b1b', marginBottom: 18 },
+  avatar: { width: 76, height: 76, borderRadius: 38, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center' },
   avatarText: { color: '#fff', fontSize: 36, fontWeight: 'bold' },
-  userName: { color: '#fff', fontSize: 24, fontWeight: 'bold', marginTop: 8 },
+  profileIdentity: { flex: 1, minWidth: 0, marginLeft: 14 },
+  userName: { color: '#fff', fontSize: 22, fontWeight: 'bold' },
   userEmail: { color: '#888', fontSize: 14, marginTop: 4 },
+  editProfileButton: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8 },
+  editProfileText: { color: '#1DB954', fontSize: 13, fontWeight: '600' },
   statsRow: { flexDirection: 'row', justifyContent: 'space-around', paddingHorizontal: 20, marginTop: 20, marginBottom: 10 },
   statCard: { alignItems: 'center', backgroundColor: '#1e1e1e', borderRadius: 14, paddingVertical: 16, paddingHorizontal: 24, minWidth: 90 },
   statNum: { color: '#1DB954', fontSize: 22, fontWeight: 'bold' },

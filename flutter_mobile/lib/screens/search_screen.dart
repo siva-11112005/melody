@@ -24,7 +24,7 @@ const List<String> _defaultQuickSearches = [
 ];
 
 final _remixNoiseWords = RegExp(r'\b(remix|version|ver|live|karaoke|slowed|reverb|mashup|dj|mix|edit|cover)\b', caseSensitive: false);
-final _lowQualityTitleWords = RegExp(r'\b(promo|teaser|trailer|preview|clip|reel|shorts?|ringtone|status|interview|dialogue|speech|announcement|bgm|theme)\b', caseSensitive: false);
+final _lowQualityTitleWords = RegExp(r'\b(promo|teaser|trailer|preview|clip|reel|shorts?|ringtone|status|interview|dialogue|speech|announcement|bgm|theme|trending version|cut song)\b', caseSensitive: false);
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -113,7 +113,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   bool _isLowQualityTrack(Track track) {
     final title = TextUtils.cleanSongTitle(track.title).toLowerCase();
-    if (track.durationMs > 0 && track.durationMs < 60000) return true;
+    if (track.durationMs > 0 && track.durationMs < 95000) return true;
     return _lowQualityTitleWords.hasMatch(title);
   }
 

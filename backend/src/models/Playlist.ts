@@ -24,6 +24,10 @@ const playlistSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   }
+}, {
+  timestamps: true,
 });
+
+playlistSchema.index({ userId: 1, createdAt: -1 });
 
 export const Playlist = mongoose.model('Playlist', playlistSchema);

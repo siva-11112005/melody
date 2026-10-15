@@ -146,8 +146,8 @@ function scoreCandidate(query: string, item: any) {
 function isLowQualityTrack(item: any) {
   const title = normalizeQuery(item?.name || item?.title || '');
   const durationSec = Number(item?.duration || item?.more_info?.duration || 0);
-  if (durationSec > 0 && durationSec < 60) return true;
-  if (/\b(promo|teaser|trailer|preview|clip|reel|shorts?|ringtone|status|interview|dialogue|speech|announcement|bgm|theme)\b/i.test(title)) {
+  if (durationSec > 0 && durationSec < 95) return true;
+  if (/\b(promo|teaser|trailer|preview|clip|reel|shorts?|ringtone|status|interview|dialogue|speech|announcement|bgm|theme|trending version|cut song)\b/i.test(title)) {
     return true;
   }
   return false;
@@ -298,6 +298,54 @@ export async function jiosaavnSearch(query: string, limit: number = 10, page: nu
       .filter((track: any) => !isLowQualityTrack(track));
   } catch (error: any) {
     console.error('JioSaavn direct search error:', error?.message);
+    return [];
+  }
+}
+
+// Helper: fetch curated JioSaavn playlists (e.g. Top 50 Superhits, 90s, 80s)
+export async function jiosaavnPlaylist(listId: string) {
+  try {
+    const response = await fetchWithRetry(() => axios.get(JIOSAAVN_BASE, {
+      params: {
+        __call: 'playlist.getDetails',
+        _format: 'json',
+        _marker: '0',
+        api_version: '4',
+        ctx: 'web6dot0',
+        listid: listId,
+      },
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'application/json',
+      },
+      timeout: REQUEST_TIMEOUT_MS,
+    }), 2);
+
+    const songs = (response.data?.list as any[]) || [];
+    return songs
+      .map((song: any) => normalizeTrackRecord({
+        id: song.id,
+        name: song.title || song.song || 'Unknown',
+        duration: parseInt(song.more_info?.duration || song.duration || '0'),
+        artists: {
+          primary: song.more_info?.artistMap?.primary_artists?.map((a: any) => ({
+            name: decodeHTMLEntities(a.name),
+            id: a.id,
+          })) || [{ name: decodeHTMLEntities(song.more_info?.primary_artists || song.primary_artists || 'Unknown'), id: '' }],
+        },
+        image: [
+          { quality: '50x50', url: (song.image || '').replace('150x150', '50x50').replace('500x500', '50x50') },
+          { quality: '150x150', url: (song.image || '').replace('500x500', '150x150') },
+          { quality: '500x500', url: (song.image || '').replace('150x150', '500x500').replace('50x50', '500x500') },
+        ],
+        downloadUrl: getDownloadUrls(song),
+        language: song.language || song.more_info?.language || '',
+        year: song.year || song.more_info?.year || '',
+        album: decodeHTMLEntities(song.more_info?.album || ''),
+      }))
+      .filter((track: any) => !isLowQualityTrack(track));
+  } catch (error: any) {
+    console.error('JioSaavn playlist direct fetch error:', error?.message);
     return [];
   }
 }
@@ -516,74 +564,68 @@ router.get('/search', async (req, res) => {
 });
 
 // Trending songs
+// Trending songs with Era support & Top 50 Chartbusters
 router.get('/trending', async (req, res) => {
   try {
-    const { languages } = req.query;
-    const cacheKey = `trending_songs_${languages || 'all'}`;
+    const { languages, era } = req.query;
+    const selectedEra = String(era || 'default').toLowerCase();
+    const cacheKey = `trending_songs_${languages || 'all'}_${selectedEra}`;
     if (cache.has(cacheKey)) {
       return res.json(cache.get(cacheKey));
     }
 
-    let langs = ['tamil'];
-    if (languages && typeof languages === 'string') {
-      langs = languages.split(',').map(l => l.trim().toLowerCase()).filter(Boolean);
-      if (langs.length === 0) langs = ['tamil'];
-    }
+    let tracks: any[] = [];
 
-    const queries = langs
-      .map(lang => `latest ${lang} songs`)
-      .concat(langs.map(lang => `top ${lang} hits`))
-      .concat(langs.map(lang => `${lang} movie songs`));
-    const allTracks: any[] = [];
-
-    // Only try proxy if it's a real external URL
-    if (hasProxy) {
-      try {
-        const testResp = await axios.get(`${JIOSAAVN_API_URL}/api/search/songs`, {
-          params: { query: queries[0], limit: 12, page: 1 },
-          timeout: 3000,
-        });
-        if (testResp.data?.data?.results) {
-          allTracks.push(...testResp.data.data.results.map((item: any) => normalizeTrackRecord(item)));
-        }
-      } catch {}
-    }
-
-    // Fetch remaining queries using direct API
-    await Promise.all(queries.slice(hasProxy && allTracks.length > 0 ? 1 : 0).map(async (q) => {
-      try {
-        const [page1, page2] = await Promise.all([
-          jiosaavnSearch(q, 10, 1),
-          jiosaavnSearch(q, 10, 2),
-        ]);
-        const results = [...page1, ...page2];
-        allTracks.push(...results);
-      } catch (err: any) {
-        console.error(`Trending fetch error for "${q}":`, err?.message);
+    // 1. Fetch based on selected music era
+    if (selectedEra === '80s') {
+      tracks = await jiosaavnPlaylist('901538755'); // Tamil 1980s
+      if (tracks.length < 15) {
+        const extra = await jiosaavnPlaylist('832228324'); // Decade of Singers 1980s
+        tracks.push(...extra);
       }
-    }));
+    } else if (selectedEra === '90s') {
+      tracks = await jiosaavnPlaylist('801896864'); // Best Of 90s - Tamil
+      if (tracks.length < 15) {
+        const extra = await jiosaavnPlaylist('2841421'); // Ilaiyaraaja 90s Hits
+        tracks.push(...extra);
+      }
+    } else if (selectedEra === '2000s') {
+      tracks = await jiosaavnPlaylist('1170578783'); // Tamil 2000s
+    } else if (selectedEra === '2010s') {
+      tracks = await jiosaavnPlaylist('809058495'); // 2000s/2010s Hits
+    } else {
+      // DEFAULT / LATEST: Official JioSaavn Top 50 Chartbusters
+      // 50 full-length, highest-played viral hits!
+      tracks = await jiosaavnPlaylist('1134651042'); // Tamil: India Superhits Top 50
+      if (tracks.length < 20) {
+        const trendingExtra = await jiosaavnPlaylist('1268500351'); // Trending Tamil Songs
+        tracks.push(...trendingExtra);
+      }
+    }
 
-    // Deduplicate & strict language filter
+    // Fallback if playlist fetch returned empty
+    if (tracks.length === 0) {
+      const q = selectedEra === '80s'
+        ? '80s tamil classic old hit songs'
+        : selectedEra === '90s'
+          ? '90s tamil evergreen songs'
+          : 'top tamil chart hits 2025 2026';
+      tracks = await jiosaavnSearch(q, 30, 1);
+    }
+
+    // Deduplicate & filter out short cut clips (< 95s)
     const seen = new Set();
-    const unique = allTracks.filter(t => {
+    const unique = tracks.filter(t => {
       Object.assign(t, normalizeTrackRecord(t));
       if (isLowQualityTrack(t)) return false;
       if (!t?.id) return false;
-
-      // Filter out non-matching languages if language tag exists
-      if (t.language && typeof t.language === 'string' && t.language.trim().length > 0) {
-        const trackLang = t.language.toLowerCase();
-        const matchesAny = langs.some(l => trackLang.includes(l));
-        if (!matchesAny) return false;
-      }
-
       if (seen.has(t.id)) return false;
       seen.add(t.id);
       return true;
     });
 
     const result = { data: { results: unique } };
-    cache.set(cacheKey, result);
+    cache.set(cacheKey, result, 1800);
     res.json(result);
   } catch (error: any) {
     console.error('Trending error:', error?.message);

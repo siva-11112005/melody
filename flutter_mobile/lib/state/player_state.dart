@@ -6,10 +6,12 @@ import 'package:just_audio/just_audio.dart' as ja;
 import 'package:just_audio_background/just_audio_background.dart';
 
 import '../models/track.dart';
+import '../services/api_service.dart';
 import '../services/download_service.dart';
 
 class PlayerState extends ChangeNotifier {
   final ja.AudioPlayer _audioPlayer = ja.AudioPlayer();
+  final ApiService _api = ApiService();
   StreamSubscription<Duration>? _positionSub;
   StreamSubscription<ja.PlayerState>? _playerStateSub;
   Timer? _positionNotifyTimer;
@@ -124,15 +126,29 @@ class PlayerState extends ChangeNotifier {
         ? track
         : cachedDownloaded ?? await _downloadService.findDownloadedTrackFor(track);
     _downloadedTrackCache[cacheKey] = downloadedTrack;
-    final playableTrack = downloadedTrack ?? track;
-
+    Track playableTrack = downloadedTrack ?? track;
     currentTrack = playableTrack;
     durationMs = playableTrack.durationMs;
     positionMs = 0;
     notifyListeners();
 
-    final url = playableTrack.localUri ?? playableTrack.url;
-    if (url == null || url.isEmpty) return;
+    String? url = playableTrack.localUri ?? playableTrack.url;
+    if ((url == null || url.isEmpty) && playableTrack.id.isNotEmpty) {
+      try {
+        final fresh = await _api.getSongById(playableTrack.id);
+        if (fresh != null && fresh.url != null && fresh.url!.isNotEmpty) {
+          url = fresh.url;
+          playableTrack = playableTrack.copyWith(url: fresh.url);
+          currentTrack = playableTrack;
+        }
+      } catch (_) {}
+    }
+
+    if (url == null || url.isEmpty) {
+      debugPrint('No audio URL found for ${playableTrack.title}');
+      playNext();
+      return;
+    }
 
     final mediaItem = MediaItem(
       id: playableTrack.id.isNotEmpty ? playableTrack.id : url,
@@ -159,7 +175,24 @@ class PlayerState extends ChangeNotifier {
       }
       _audioPlayer.play();
     } catch (e) {
-      debugPrint('Playback error: $e');
+      debugPrint('Playback error: $e. Retrying with fresh URL...');
+      try {
+        final refreshed = await _api.getSongById(playableTrack.id);
+        if (refreshed != null && refreshed.url != null && refreshed.url!.isNotEmpty && refreshed.url != url) {
+          final refreshedItem = mediaItem.copyWith(
+            id: refreshed.id,
+            artUri: refreshed.artwork != null ? Uri.tryParse(refreshed.artwork!) : mediaItem.artUri,
+          );
+          await _audioPlayer.setAudioSource(
+            ja.AudioSource.uri(Uri.parse(refreshed.url!), tag: refreshedItem),
+            preload: true,
+          );
+          await _audioPlayer.play();
+          return;
+        }
+      } catch (retryErr) {
+        debugPrint('Retry playback failed: $retryErr');
+      }
       playNext();
     }
   }

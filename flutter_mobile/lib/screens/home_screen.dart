@@ -2,15 +2,16 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/track.dart';
 import '../services/api_service.dart';
 import '../state/auth_state.dart';
 import '../state/library_state.dart';
 import '../state/player_state.dart';
+import '../utils/text_utils.dart';
 import '../widgets/app_backdrop.dart';
 import '../widgets/expo_skeleton.dart';
-import '../utils/text_utils.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -31,39 +32,25 @@ class _HomeScreenState extends State<HomeScreen> {
   final Map<String, ScrollController> _sectionControllers = {};
 
   bool _loading = true;
+  String _selectedEra = 'default';
   List<Map<String, dynamic>> _dynamicSections = [];
 
-  static const int initialLoadSize = 8;
-  static const int pageSize = 6;
+  static const int initialLoadSize = 10;
+  static const int pageSize = 8;
 
-  static const List<Map<String, dynamic>> primarySections = [
-    {'title': 'Trending in Tamil', 'icon': Icons.local_fire_department, 'queries': ['trending tamil songs', 'top tamil hits 2024', 'popular tamil songs']},
-    {'title': 'Latest Tamil Releases', 'icon': Icons.auto_awesome, 'queries': ['latest new tamil songs 2025', 'new tamil movie songs', 'recent tamil hits']},
-    {'title': 'Romantic Tamil Songs', 'icon': Icons.favorite, 'queries': ['romantic tamil love songs', 'tamil love melody', 'tamil kadhal songs']},
-    {'title': 'Mass / Energy Tamil Songs', 'icon': Icons.flash_on, 'queries': ['tamil mass kuthu dance songs', 'tamil mass entry songs', 'tamil kuthu party']},
-    {'title': 'Anirudh Hits', 'icon': Icons.headset, 'queries': ['anirudh ravichander tamil hits', 'anirudh latest songs', 'anirudh dance songs']},
-    {'title': 'A.R. Rahman Hits', 'icon': Icons.headset, 'queries': ['ar rahman tamil hits', 'ar rahman best songs', 'ar rahman oscar songs']},
-    {'title': 'Chill Tamil Vibes', 'icon': Icons.local_cafe, 'queries': ['chill tamil melody songs', 'tamil soft melody', 'relaxing tamil songs']},
-    {'title': 'Sad Tamil Songs', 'icon': Icons.water_drop, 'queries': ['sad tamil songs emotional', 'tamil sad melody songs', 'heartbreak tamil songs']},
-  ];
-
-  static const List<Map<String, dynamic>> extraSections = [
-    {'title': '90s Tamil Classics', 'icon': Icons.radio, 'queries': ['90s tamil classic old songs', 'ilayaraja 90s hits tamil', 'old tamil golden songs']},
-    {'title': 'Yuvan Shankar Raja Hits', 'icon': Icons.album, 'queries': ['yuvan shankar raja tamil hits', 'yuvan love songs tamil', 'yuvan best melodies']},
-    {'title': 'Ilaiyaraaja Classics', 'icon': Icons.star, 'queries': ['ilaiyaraaja tamil classic songs', 'ilayaraja evergreen hits', 'ilayaraja melody songs']},
-    {'title': 'Sid Sriram Tamil Hits', 'icon': Icons.mic, 'queries': ['sid sriram tamil songs', 'sid sriram melody songs', 'sid sriram latest']},
-    {'title': 'Tamil Hip Hop & Rap', 'icon': Icons.volume_up, 'queries': ['tamil hip hop rap songs', 'tamil rap independent', 'tamil gaana songs']},
-    {'title': 'Tamil Duet Songs', 'icon': Icons.people, 'queries': ['tamil duet love songs', 'tamil romantic duet hits', 'tamil male female duets']},
-    {'title': 'Tamil Workout Beats', 'icon': Icons.fitness_center, 'queries': ['tamil gym workout motivational songs', 'tamil fast beat songs', 'tamil energy songs workout']},
-    {'title': 'Tamil Devotional', 'icon': Icons.eco, 'queries': ['tamil devotional songs murugan', 'tamil god songs vinayagar', 'tamil bhakti songs']},
-    {'title': 'Tamil Independent Music', 'icon': Icons.mic_external_on, 'queries': ['tamil independent indie album songs', 'tamil indie band songs', 'tamil album songs love']},
-    {'title': 'Tamil Kids & Fun', 'icon': Icons.mood, 'queries': ['tamil kids fun songs', 'tamil children rhymes songs', 'tamil animated kids songs']},
+  static const List<Map<String, dynamic>> eraOptions = [
+    {'id': 'default', 'label': 'Default', 'icon': Icons.whatshot},
+    {'id': 'latest', 'label': 'Latest Hits', 'icon': Icons.bolt},
+    {'id': '2010s', 'label': "2010's Hits", 'icon': Icons.electric_bolt},
+    {'id': '2000s', 'label': "2000's Hits", 'icon': Icons.album},
+    {'id': '90s', 'label': "90's Classics", 'icon': Icons.radio},
+    {'id': '80s', 'label': "80's Classics", 'icon': Icons.star},
   ];
 
   @override
   void initState() {
     super.initState();
-    _loadHome();
+    _initEraAndLoad();
   }
 
   @override
@@ -72,6 +59,220 @@ class _HomeScreenState extends State<HomeScreen> {
       c.dispose();
     }
     super.dispose();
+  }
+
+  Future<void> _initEraAndLoad() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedEra = prefs.getString('preferredMusicEra') ?? 'default';
+      if (mounted) {
+        setState(() => _selectedEra = savedEra);
+      }
+    } catch (_) {}
+    _loadHome();
+  }
+
+  Future<void> _changeEra(String eraId) async {
+    if (_selectedEra == eraId) return;
+    setState(() {
+      _selectedEra = eraId;
+      _loading = true;
+    });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('preferredMusicEra', eraId);
+    } catch (_) {}
+    await _loadHome();
+  }
+
+  List<Map<String, dynamic>> _getSectionsForEra(String era) {
+    switch (era) {
+      case '80s':
+        return [
+          {
+            'title': "80's Tamil Golden Classics",
+            'icon': Icons.star,
+            'isTrendingChart': true,
+            'queries': ['80s tamil evergreen classic songs', 'ilaiyaraaja 80s hits', 'spb 80s tamil hits']
+          },
+          {
+            'title': 'Ilaiyaraaja 80s Magic',
+            'icon': Icons.album,
+            'queries': ['ilayaraja 80s superhit songs', 'ilaiyaraaja evergreen 80s', 'ilayaraja spb duets']
+          },
+          {
+            'title': 'SPB & S. Janaki 80s Duets',
+            'icon': Icons.favorite,
+            'queries': ['spb janaki tamil love duets 80s', 'spb romantic hits 80s', 'tamil 80s duet songs']
+          },
+          {
+            'title': '80s Retro Melody Hits',
+            'icon': Icons.music_note,
+            'queries': ['80s tamil melody songs old', '80s tamil love songs golden', 'tamil old golden melodies']
+          },
+        ];
+
+      case '90s':
+        return [
+          {
+            'title': "90's Tamil Evergreen Hits",
+            'icon': Icons.radio,
+            'isTrendingChart': true,
+            'queries': ['90s tamil superhit evergreen songs', 'ilayaraja 90s hits tamil', 'ar rahman 90s hits']
+          },
+          {
+            'title': 'A.R. Rahman 90s Magic',
+            'icon': Icons.headset,
+            'queries': ['ar rahman 90s tamil hits', 'ar rahman roja bombay kadhalan', 'rahman 90s melody']
+          },
+          {
+            'title': 'Ilaiyaraaja 90s Melodies',
+            'icon': Icons.star,
+            'queries': ['ilaiyaraaja 90s melody songs', 'ilayaraja 90s golden hits', 'ilayaraja melody classic 90s']
+          },
+          {
+            'title': '90s Romantic Love Songs',
+            'icon': Icons.favorite,
+            'queries': ['90s tamil love songs romantic', '90s tamil kadhal melodies', '90s tamil duets love']
+          },
+          {
+            'title': 'Yuvan Shankar Raja Early Hits',
+            'icon': Icons.album,
+            'queries': ['yuvan shankar raja 90s 2000s hits', 'yuvan initial hits tamil', 'yuvan love melodies']
+          },
+        ];
+
+      case '2000s':
+        return [
+          {
+            'title': "2000's Tamil Superhits",
+            'icon': Icons.album,
+            'isTrendingChart': true,
+            'queries': ['2000s tamil superhit songs', 'harris jayaraj 2000s hits', 'yuvan 2000s hits']
+          },
+          {
+            'title': 'Harris Jayaraj 2000s Magic',
+            'icon': Icons.headset,
+            'queries': ['harris jayaraj tamil hits 2000s', 'harris jayaraj melody songs', 'minnale kaakha kaakha songs']
+          },
+          {
+            'title': 'Yuvan 2000s Cult Melodies',
+            'icon': Icons.favorite,
+            'queries': ['yuvan shankar raja 2000s love songs', 'yuvan best melodies 2000s', '7g rainbow paiyaa songs']
+          },
+          {
+            'title': '2000s Mass & Kuthu Party',
+            'icon': Icons.flash_on,
+            'queries': ['2000s tamil kuthu dance songs', 'dharani vijay kuthu songs 2000s', 'tamil mass kuthu party 2000s']
+          },
+        ];
+
+      case '2010s':
+        return [
+          {
+            'title': "2010's Tamil Chartbusters",
+            'icon': Icons.electric_bolt,
+            'isTrendingChart': true,
+            'queries': ['2010s tamil superhit songs', 'anirudh 2010s hits 3 vip', 'santhosh narayanan tamil hits']
+          },
+          {
+            'title': 'Anirudh Early Viral Era',
+            'icon': Icons.local_fire_department,
+            'queries': ['anirudh ravichander 3 vip vedalam', 'anirudh kaththi remor songs', 'anirudh naanum rowdy dhaan']
+          },
+          {
+            'title': 'Sid Sriram 2010s Melodies',
+            'icon': Icons.mic,
+            'queries': ['sid sriram tamil love melodies', 'sid sriram thalli pogathey', 'sid sriram maruvaarthai']
+          },
+          {
+            'title': 'Dhanush & Vijay 2010s Mass',
+            'icon': Icons.flash_on,
+            'queries': ['dhanush anirudh songs vip', 'vijay theri mersal songs', 'tamil 2010s mass songs']
+          },
+        ];
+
+      case 'latest':
+        return [
+          {
+            'title': 'Top 50 Tamil Superhits',
+            'icon': Icons.local_fire_department,
+            'isTrendingChart': true,
+            'queries': ['tamil top 50 hits 2025 2026', 'latest new tamil songs 2026', 'trending tamil songs']
+          },
+          {
+            'title': 'New Releases & Movie Hits',
+            'icon': Icons.auto_awesome,
+            'queries': ['latest new tamil movie songs 2025 2026', 'recent tamil releases songs', 'new tamil movie album']
+          },
+          {
+            'title': 'Anirudh Latest Hits',
+            'icon': Icons.headset,
+            'queries': ['anirudh latest songs 2025 2026', 'anirudh ravichander viral hits', 'anirudh dance songs']
+          },
+          {
+            'title': 'Sai Abhyankkar & Indie Hits',
+            'icon': Icons.mic_external_on,
+            'queries': ['sai abhyankkar katchi sera aasa kooda', 'radhimaa song tamil', 'tamil independent viral songs']
+          },
+        ];
+
+      case 'default':
+      default:
+        return [
+          {
+            'title': 'Trending in Tamil (Top Hits)',
+            'icon': Icons.local_fire_department,
+            'isTrendingChart': true,
+            'queries': ['tamil top 50 superhits', 'trending tamil songs', 'top tamil hits']
+          },
+          {
+            'title': 'Latest Tamil Releases',
+            'icon': Icons.auto_awesome,
+            'queries': ['latest new tamil movie songs 2025', 'recent tamil releases', 'new tamil songs']
+          },
+          {
+            'title': 'Romantic Tamil Melodies',
+            'icon': Icons.favorite,
+            'queries': ['romantic tamil love songs', 'tamil love melody songs', 'tamil kadhal melody hits']
+          },
+          {
+            'title': 'Mass & Energy Hits',
+            'icon': Icons.flash_on,
+            'queries': ['tamil mass kuthu dance songs', 'tamil fast beat mass songs', 'tamil energy party songs']
+          },
+          {
+            'title': 'Anirudh Ravichander Hits',
+            'icon': Icons.headset,
+            'queries': ['anirudh ravichander tamil hits', 'anirudh viral dance songs', 'anirudh latest hits']
+          },
+          {
+            'title': 'A.R. Rahman Evergreen',
+            'icon': Icons.headset,
+            'queries': ['ar rahman tamil hits best', 'ar rahman melody songs', 'ar rahman evergreen tamil']
+          },
+          {
+            'title': 'Chill Tamil Vibes',
+            'icon': Icons.local_cafe,
+            'queries': ['chill tamil melody songs', 'relaxing tamil acoustic songs', 'tamil soft melodies']
+          },
+          {
+            'title': 'Yuvan Shankar Raja Hits',
+            'icon': Icons.album,
+            'queries': ['yuvan shankar raja tamil hits', 'yuvan love songs tamil', 'yuvan best melodies']
+          },
+          {
+            'title': 'Sid Sriram Melodies',
+            'icon': Icons.mic,
+            'queries': ['sid sriram tamil songs best', 'sid sriram melody songs', 'sid sriram hits']
+          },
+          {
+            'title': 'Sad & Emotional Melodies',
+            'icon': Icons.water_drop,
+            'queries': ['sad tamil songs emotional', 'heartbreak tamil melody songs', 'tamil emotional songs']
+          },
+        ];
+    }
   }
 
   Future<void> _loadHome() async {
@@ -86,28 +287,30 @@ class _HomeScreenState extends State<HomeScreen> {
       _sectionLoadingMore.clear();
     });
 
-    await _loadSectionBatch(primarySections.take(2).toList());
+    final currentSections = _getSectionsForEra(_selectedEra);
+    final initialBatch = currentSections.take(2).toList();
+    await _loadSectionBatch(initialBatch);
 
     if (mounted) {
       setState(() => _loading = false);
-      unawaited(_loadHomeBackground());
+      unawaited(_loadHomeBackground(currentSections));
     }
   }
 
-  Future<void> _loadHomeBackground() async {
-    // Load remaining primary + all extra sections in parallel
+  Future<void> _loadHomeBackground(List<Map<String, dynamic>> allSections) async {
     await Future.wait([
       _generateDynamicSections(),
-      _loadSectionBatch(primarySections.skip(2).toList()),
-      _loadSectionBatch(extraSections),
+      _loadSectionBatch(allSections.skip(2).toList()),
     ]);
   }
 
   Future<void> _loadSectionBatch(List<Map<String, dynamic>> sections) async {
     final tasks = sections.map((section) {
+      final isTrending = section['isTrendingChart'] == true;
       return _loadInitialSection(
         title: section['title'] as String,
         queries: (section['queries'] as List).cast<String>(),
+        isTrending: isTrending,
       );
     }).toList();
     await Future.wait(tasks);
@@ -149,23 +352,32 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-
-
-  Future<void> _loadInitialSection({required String title, required List<String> queries}) async {
+  Future<void> _loadInitialSection({
+    required String title,
+    required List<String> queries,
+    bool isTrending = false,
+  }) async {
     _sectionQueries[title] = queries;
     _sectionPage[title] = 1;
     _sectionQueryIndex[title] = 0;
     _sectionHasMore[title] = true;
     _sectionLoadingMore[title] = false;
 
-    final primaryQuery = queries.isNotEmpty ? queries.first : title;
     List<Track> fetched = const [];
+
     try {
-      fetched = await _api.searchSongs(primaryQuery, page: 1, limit: 12);
+      if (isTrending) {
+        // Fetch genuine Top 50 Chartbusters & high-play full songs!
+        fetched = await _api.getTrendingSongs(era: _selectedEra, limit: 30);
+      } else {
+        final primaryQuery = queries.isNotEmpty ? queries.first : title;
+        fetched = await _api.searchSongs(primaryQuery, page: 1, limit: 16);
+      }
     } catch (_) {}
 
     final seen = <String>{};
-    final sliced = _dedupe(fetched, seen).take(initialLoadSize).toList();
+    final filtered = fetched.where((t) => t.durationMs >= 95000 || t.durationMs == 0).toList();
+    final sliced = _dedupe(filtered.isNotEmpty ? filtered : fetched, seen).take(initialLoadSize).toList();
 
     if (!mounted) return;
     setState(() {
@@ -206,6 +418,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     int queryIndex = _sectionQueryIndex[title] ?? 0;
     int page = _sectionPage[title] ?? 1;
+
     final fetchedBatches = await Future.wait(
       queries.map((query) async {
         try {
@@ -218,9 +431,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final appended = <Track>[];
     for (int i = 0; i < fetchedBatches.length; i++) {
-      final unique = _dedupe(fetchedBatches[i], seen);
+      final filtered = fetchedBatches[i].where((t) => t.durationMs >= 95000 || t.durationMs == 0).toList();
+      final unique = _dedupe(filtered.isNotEmpty ? filtered : fetchedBatches[i], seen);
       if (unique.isNotEmpty) {
-        unique.shuffle();
         appended.addAll(unique.take(pageSize));
         queryIndex = i;
         page = page + 1;
@@ -279,11 +492,11 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final greeting = _getGreeting();
     final recently = context.watch<LibraryState>().recentlyPlayed;
+    final eraSections = _getSectionsForEra(_selectedEra);
 
     final orderedSections = <Map<String, dynamic>>[
       ..._dynamicSections,
-      ...primarySections,
-      ...extraSections,
+      ...eraSections,
     ];
 
     return Stack(
@@ -293,13 +506,15 @@ class _HomeScreenState extends State<HomeScreen> {
           onRefresh: _loadHome,
           color: const Color(0xFF1DB954),
           child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
             child: Padding(
               padding: const EdgeInsets.only(bottom: 140),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // App Header
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 60, 20, 15),
+                    padding: const EdgeInsets.fromLTRB(20, 56, 20, 12),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -313,38 +528,100 @@ class _HomeScreenState extends State<HomeScreen> {
                                   Container(
                                     padding: const EdgeInsets.all(8),
                                     decoration: BoxDecoration(
-                                      color: const Color(0xFF1DB954).withValues(alpha: 0.12),
+                                      color: const Color(0xFF1DB954).withValues(alpha: 0.15),
                                       borderRadius: BorderRadius.circular(12),
                                     ),
                                     child: const Icon(Icons.music_note, color: Color(0xFF1DB954), size: 24),
                                   ),
                                   const SizedBox(width: 10),
-                                  const Text('Tamil Music', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                                  const Text(
+                                    'Tamil Music',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
                                 ],
                               ),
                               const SizedBox(height: 12),
-                              Text('Good $greeting', style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800)),
+                              Text(
+                                'Good $greeting',
+                                style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800),
+                              ),
                               const SizedBox(height: 4),
-                              const Text('Handpicked for you', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                              const Text('Curated hits & timeless melodies', style: TextStyle(color: Colors.white70, fontSize: 13)),
                             ],
                           ),
                         ),
                         GestureDetector(
                           onTap: () => Navigator.pushNamed(context, '/profile'),
                           child: Container(
-                            width: 48,
-                            height: 48,
+                            width: 44,
+                            height: 44,
                             decoration: BoxDecoration(
-                              color: const Color(0xFF202020),
+                              color: const Color(0xFF222222),
                               borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.white12),
                             ),
-                            child: const Icon(Icons.person_outline, color: Color(0xFF1DB954), size: 24),
+                            child: const Icon(Icons.person_outline, color: Color(0xFF1DB954), size: 22),
                           ),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 5),
+
+                  // Era Selection Chips (Filter Bar)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8, top: 4),
+                    child: SizedBox(
+                      height: 40,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: eraOptions.length,
+                        separatorBuilder: (context, index) => const SizedBox(width: 8),
+                        itemBuilder: (ctx, i) {
+                          final opt = eraOptions[i];
+                          final isSelected = _selectedEra == opt['id'];
+                          return GestureDetector(
+                            onTap: () => _changeEra(opt['id'] as String),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: isSelected ? const Color(0xFF1DB954) : const Color(0xFF202020),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: isSelected ? const Color(0xFF1DB954) : Colors.white.withValues(alpha: 0.08),
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    opt['icon'] as IconData,
+                                    size: 15,
+                                    color: isSelected ? Colors.black : Colors.white70,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    opt['label'] as String,
+                                    style: TextStyle(
+                                      color: isSelected ? Colors.black : Colors.white,
+                                      fontSize: 12,
+                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+
                   if (_loading)
                     Column(
                       children: [
@@ -368,15 +645,18 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            children: [
-                              const Icon(Icons.history, color: Color(0xFF1DB954), size: 22),
-                              const SizedBox(width: 8),
-                              const Text('Recently Played', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 19)),
-                            ],
+                          const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 20),
+                            child: Row(
+                              children: [
+                                Icon(Icons.history, color: Color(0xFF1DB954), size: 20),
+                                SizedBox(width: 8),
+                                Text('Recently Played', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
+                              ],
+                            ),
                           ),
                           const SizedBox(height: 12),
-                          SizedBox(height: 176, child: _horizontalTracks(recently, recently)),
+                          SizedBox(height: 182, child: _horizontalTracks(recently, recently)),
                         ],
                       ),
                     ),
@@ -406,25 +686,25 @@ class _HomeScreenState extends State<HomeScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.only(left: 20, right: 20, bottom: 14, top: 5),
+            padding: const EdgeInsets.only(left: 20, right: 20, bottom: 12, top: 4),
             child: Row(
               children: [
                 if (icon is IconData)
                   Padding(
                     padding: const EdgeInsets.only(right: 8),
-                    child: Icon(icon, color: const Color(0xFF1DB954), size: 22),
+                    child: Icon(icon, color: const Color(0xFF1DB954), size: 20),
                   )
                 else if (icon is String)
                   const Padding(
                     padding: EdgeInsets.only(right: 8),
-                    child: Icon(Icons.auto_awesome, color: Color(0xFF1DB954), size: 22),
+                    child: Icon(Icons.auto_awesome, color: Color(0xFF1DB954), size: 20),
                   ),
-                Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 19)),
+                Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
               ],
             ),
           ),
           SizedBox(
-            height: 176,
+            height: 182,
             child: _horizontalTracks(tracks, tracks, controller: controller, isLoadingMore: loadingMore),
           ),
         ],
@@ -432,7 +712,12 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _horizontalTracks(List<Track> tracks, List<Track> contextQueue, {ScrollController? controller, bool isLoadingMore = false}) {
+  Widget _horizontalTracks(
+    List<Track> tracks,
+    List<Track> contextQueue, {
+    ScrollController? controller,
+    bool isLoadingMore = false,
+  }) {
     return ListView.builder(
       controller: controller,
       scrollDirection: Axis.horizontal,
@@ -458,40 +743,61 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _trackCard(Track track, List<Track> contextQueue) {
-    return GestureDetector(
-      onTap: () async {
-        final auth = context.read<AuthState>();
-        final library = context.read<LibraryState>();
-        await context.read<PlayerState>().playTrack(track, contextQueue: contextQueue);
-        await library.addRecentlyPlayed(track, token: auth.token);
-      },
-      child: Container(
-        width: 130,
-        margin: const EdgeInsets.only(left: 20),
+    return Container(
+      width: 130,
+      margin: const EdgeInsets.only(left: 20),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () async {
+          final auth = context.read<AuthState>();
+          final library = context.read<LibraryState>();
+          await context.read<PlayerState>().playTrack(track, contextQueue: contextQueue);
+          await library.addRecentlyPlayed(track, token: auth.token);
+        },
+        onLongPress: () => _openSongOptionsSheet(track),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: SizedBox(
-                width: 130,
-                height: 130,
-                child: track.artwork != null
-                    ? Image.network(
-                        track.artwork!,
-                        fit: BoxFit.cover,
-                        errorBuilder: (ctx, e, st) => Container(
-                          color: const Color(0xFF282828),
-                          child: const Icon(Icons.music_note, color: Colors.white70),
-                        ),
-                      )
-                    : Container(
-                        color: const Color(0xFF282828),
-                        child: const Icon(Icons.music_note, color: Colors.white70),
+            Stack(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: SizedBox(
+                    width: 130,
+                    height: 130,
+                    child: track.artwork != null && track.artwork!.isNotEmpty
+                        ? Image.network(
+                            track.artwork!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (ctx, e, st) => Container(
+                              color: const Color(0xFF282828),
+                              child: const Icon(Icons.music_note, color: Colors.white70),
+                            ),
+                          )
+                        : Container(
+                            color: const Color(0xFF282828),
+                            child: const Icon(Icons.music_note, color: Colors.white70),
+                          ),
+                  ),
+                ),
+                Positioned(
+                  right: 4,
+                  bottom: 4,
+                  child: GestureDetector(
+                    onTap: () => _openSongOptionsSheet(track),
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: const BoxDecoration(
+                        color: Colors.black54,
+                        shape: BoxShape.circle,
                       ),
-              ),
+                      child: const Icon(Icons.more_vert, color: Colors.white, size: 16),
+                    ),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 7),
             Text(
               TextUtils.cleanSongTitle(track.title),
               maxLines: 1,
@@ -507,6 +813,186 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _openSongOptionsSheet(Track track) {
+    final library = context.read<LibraryState>();
+    final isLiked = library.isLiked(track.id);
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E1E1E),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (sheetCtx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: track.artwork != null
+                        ? Image.network(track.artwork!, width: 48, height: 48, fit: BoxFit.cover, errorBuilder: (ctx, err, stack) => Container(color: Colors.grey[900], width: 48, height: 48, child: const Icon(Icons.music_note, color: Colors.white54)))
+                        : Container(color: Colors.grey[900], width: 48, height: 48, child: const Icon(Icons.music_note, color: Colors.white54)),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(TextUtils.cleanSongTitle(track.title), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        const SizedBox(height: 3),
+                        Text(TextUtils.cleanSongTitle(track.artist), style: const TextStyle(color: Colors.white60, fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              const Divider(color: Colors.white12),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(isLiked ? Icons.favorite : Icons.favorite_border, color: isLiked ? const Color(0xFF1DB954) : Colors.white),
+                title: Text(isLiked ? 'Remove from Liked Songs' : 'Like Song', style: const TextStyle(color: Colors.white)),
+                onTap: () {
+                  library.toggleLike(track);
+                  Navigator.pop(sheetCtx);
+                },
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.playlist_add, color: Color(0xFF1DB954)),
+                title: const Text('Add to Playlist', style: TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.pop(sheetCtx);
+                  _openAddToPlaylistSheet(track);
+                },
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.queue_music, color: Colors.white),
+                title: const Text('Play Next in Queue', style: TextStyle(color: Colors.white)),
+                onTap: () {
+                  final player = context.read<PlayerState>();
+                  player.queue.insert((player.currentIndex + 1).clamp(0, player.queue.length), track);
+                  Navigator.pop(sheetCtx);
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Added to Up Next')));
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openAddToPlaylistSheet(Track track) async {
+    final token = context.read<AuthState>().token ?? '';
+    final playlists = await _api.getPlaylists(token);
+    final playlistNameCtrl = TextEditingController();
+
+    if (!mounted) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF181818),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          return Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+              left: 20,
+              right: 20,
+              top: 20,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Add to Playlist', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: playlistNameCtrl,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: const InputDecoration(
+                          hintText: 'New playlist name...',
+                          hintStyle: TextStyle(color: Colors.white38),
+                          filled: true,
+                          fillColor: Color(0xFF242424),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(12)), borderSide: BorderSide.none),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF1DB954),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed: () async {
+                        final name = playlistNameCtrl.text.trim();
+                        if (name.isEmpty) return;
+                        final messenger = ScaffoldMessenger.of(context);
+                        final navigator = Navigator.of(ctx);
+                        final created = await _api.createPlaylist(token, name);
+                        final pid = (created['_id'] ?? created['id'])?.toString();
+                        if (pid != null) {
+                          await _api.addTrackToPlaylist(token, pid, track);
+                        }
+                        navigator.pop();
+                        messenger.showSnackBar(SnackBar(content: Text('Added to "$name"')));
+                      },
+                      child: const Text('Create', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                const Text('Your Playlists', style: TextStyle(color: Colors.white60, fontSize: 13, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                if (playlists.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 20),
+                    child: Center(child: Text('No playlists yet. Create one above!', style: TextStyle(color: Colors.white38))),
+                  )
+                else
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 250),
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: playlists.length,
+                      itemBuilder: (c, idx) {
+                        final pl = playlists[idx];
+                        final pid = (pl['_id'] ?? pl['id'])?.toString() ?? '';
+                        final name = (pl['name'] ?? 'Playlist').toString();
+                        return ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.playlist_play, color: Color(0xFF1DB954)),
+                          title: Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
+                          trailing: const Icon(Icons.add, color: Colors.white70),
+                          onTap: () async {
+                            final messenger = ScaffoldMessenger.of(context);
+                            final navigator = Navigator.of(ctx);
+                            await _api.addTrackToPlaylist(token, pid, track);
+                            navigator.pop();
+                            messenger.showSnackBar(SnackBar(content: Text('Added to "$name"')));
+                          },
+                        );
+                      },
+                    ),
+                  ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
